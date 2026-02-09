@@ -882,6 +882,137 @@ header {
 
 .loading-text { color: var(--dim); font-size: 0.9rem; }
 
+/* ── Inspector Mode ── */
+.inspector-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
+}
+.inspector-section h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inspector-section h4 .section-icon { font-size: 1rem; }
+
+.inspector-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.inspector-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  color: var(--text);
+  vertical-align: top;
+}
+.inspector-table tr:last-child td { border-bottom: none; }
+.inspector-table tr:hover td { background: rgba(56, 139, 253, 0.04); }
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 9px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.role-badge.artist { background: rgba(126, 231, 135, 0.12); color: var(--green); }
+.role-badge.writer { background: rgba(188, 140, 255, 0.12); color: var(--purple); }
+.role-badge.performer { background: rgba(56, 139, 253, 0.12); color: var(--blue); }
+.role-badge.production { background: rgba(210, 153, 34, 0.12); color: var(--yellow); }
+.role-badge.other-role { background: rgba(139, 148, 158, 0.12); color: var(--dim); }
+
+.track-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.track-card:last-child { margin-bottom: 0; }
+.track-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.track-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(56, 139, 253, 0.1);
+  color: var(--blue);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.track-title { font-weight: 600; font-size: 0.9rem; }
+.track-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 0.78rem;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+.track-meta code { font-family: var(--font-mono); font-size: 0.75rem; }
+.track-contributors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.track-contributor {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  background: rgba(139, 148, 158, 0.06);
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  border-radius: 4px;
+}
+.track-contributor .contrib-name { color: var(--text); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--purple);
+  border-color: var(--purple);
+}
+.btn-secondary:hover { background: rgba(188, 140, 255, 0.08); }
+.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.inspector-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--dim);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .container { padding: 16px 12px 60px; }
@@ -936,6 +1067,7 @@ header {
     <div class="file-chips" id="fileChips"></div>
     <div id="uploadMessages"></div>
     <div class="upload-actions" id="uploadActions" style="display:none">
+      <button class="btn btn-secondary" id="btnInspect" onclick="runInspector()">🔍 Inspect file</button>
       <button class="btn btn-primary" id="btnCompare" onclick="runComparison()">Compare files</button>
     </div>
   </div>
@@ -986,6 +1118,12 @@ const DDEX_TIPS = {
   ResourceList: 'All audio files, videos, and images in the delivery',
   ReleaseList: 'Release info: title, artist, UPC, genre, label — but not deals',
   DealList: 'Business terms: where, when, and how the music can be sold/streamed',
+  ResourceContributorRole: 'The specific role this person played (e.g. Vocalist, Composer, Producer)',
+  DisplayArtistRole: 'How this artist is credited — MainArtist, FeaturedArtist, etc.',
+  InstrumentType: 'The instrument played by this contributor',
+  TerritoryCode: 'Country or region where this deal applies (e.g. US, GB, Worldwide)',
+  UseType: 'How the content can be used (e.g. OnDemandStream, PermanentDownload)',
+  SoundRecording: 'A single audio track in the delivery',
 };
 
 // Build regex to match DDEX tag names in HTML-escaped text
@@ -1043,6 +1181,7 @@ const uploadMessages = document.getElementById('uploadMessages');
 const uploadActions = document.getElementById('uploadActions');
 const btnClearAll = document.getElementById('btnClearAll');
 const btnCompare = document.getElementById('btnCompare');
+const btnInspect = document.getElementById('btnInspect');
 
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
@@ -1119,9 +1258,10 @@ function updateUI() {
   const n = state.files.length;
   btnClearAll.style.display = n > 0 ? '' : 'none';
   uploadActions.style.display = n > 0 ? 'flex' : 'none';
+  btnInspect.disabled = n < 1;
   btnCompare.disabled = n < 2;
   clearMessages();
-  if (n === 1) showMessage('Add at least one more file to compare.', 'info');
+  if (n === 1) showMessage('You can inspect this file or add more to compare.', 'info');
 }
 
 function showMessage(text, type) {
@@ -1857,6 +1997,247 @@ function validateFiles(files) {
   }
 
   return { block: false, html };
+}
+
+// ─── Inspector Mode ──────────────────────────────────────────────────────────
+
+function extractTracks(doc) {
+  const tracks = [];
+  const recordings = doc.getElementsByTagName('SoundRecording');
+  for (const rec of recordings) {
+    const get = (tag) => { const el = rec.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : null; };
+
+    // Contributors
+    const contributors = [];
+    const contribs = rec.getElementsByTagName('ResourceContributor');
+    for (const c of contribs) {
+      const name = c.getElementsByTagName('FullName')[0]?.textContent.trim()
+        || c.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
+      const role = c.getElementsByTagName('ResourceContributorRole')[0]?.textContent.trim() || null;
+      const instrument = c.getElementsByTagName('InstrumentType')[0]?.textContent.trim() || null;
+      contributors.push({ name, role, instrument });
+    }
+
+    // Display artists
+    const artists = [];
+    const displayArtists = rec.getElementsByTagName('DisplayArtist');
+    for (const a of displayArtists) {
+      const name = a.getElementsByTagName('FullName')[0]?.textContent.trim()
+        || a.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
+      const role = a.getElementsByTagName('DisplayArtistRole')[0]?.textContent.trim() || null;
+      artists.push({ name, role });
+    }
+
+    // Duration: parse ISO PT format
+    const rawDur = get('Duration');
+    let duration = rawDur;
+    if (rawDur) {
+      const m = rawDur.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/);
+      if (m) {
+        const h = parseInt(m[1] || 0);
+        const min = parseInt(m[2] || 0);
+        const sec = Math.round(parseFloat(m[3] || 0));
+        duration = h > 0 ? `${h}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+                         : `${min}:${String(sec).padStart(2,'0')}`;
+      }
+    }
+
+    tracks.push({
+      title: get('DisplayTitleText') || get('TitleText') || get('Title') || 'Untitled',
+      isrc: get('ISRC'),
+      duration,
+      contributors,
+      artists,
+    });
+  }
+  return tracks;
+}
+
+function extractDeals(doc) {
+  const deals = [];
+  // Try ReleaseDeal first, then Deal
+  let dealEls = doc.getElementsByTagName('ReleaseDeal');
+  if (dealEls.length === 0) dealEls = doc.getElementsByTagName('Deal');
+  for (const d of dealEls) {
+    // Territories
+    const territories = [];
+    const terrEls = d.getElementsByTagName('TerritoryCode');
+    for (const t of terrEls) {
+      const v = t.textContent.trim();
+      if (v && !territories.includes(v)) territories.push(v);
+    }
+
+    const get = (tag) => { const el = d.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : null; };
+    const model = get('CommercialModelType');
+    const useType = get('UseType');
+    const startDate = get('StartDate');
+    const endDate = get('EndDate');
+
+    deals.push({ model, territories, startDate, endDate, useType });
+  }
+  return deals;
+}
+
+function getRoleBadgeClass(role) {
+  if (!role) return 'other-role';
+  const r = role.toLowerCase();
+  if (r.includes('mainartist') || r.includes('featuredartist') || r === 'artist') return 'artist';
+  if (r.includes('composer') || r.includes('lyricist') || r.includes('arranger') || r.includes('author') || r.includes('writer')) return 'writer';
+  if (r.includes('vocalist') || r.includes('musician') || r.includes('performer') || r.includes('chorus') || r.includes('soloist') || r.includes('conductor') || r.includes('orchestra')) return 'performer';
+  if (r.includes('producer') || r.includes('mixer') || r.includes('engineer') || r.includes('remixer') || r.includes('mastering')) return 'production';
+  return 'other-role';
+}
+
+function formatRoleName(role) {
+  if (!role) return '—';
+  // Convert CamelCase to spaced: "MainArtist" → "Main Artist"
+  return role.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+function runInspector() {
+  if (state.files.length === 0) return;
+  const file = state.files[0];
+  const doc = file.doc;
+  const results = document.getElementById('results');
+
+  const meta = extractMeta(doc);
+  const tracks = extractTracks(doc);
+  const deals = extractDeals(doc);
+
+  let html = '';
+
+  // ── Release Card (reuse existing) ──
+  html += renderReleaseCard(meta);
+
+  // ── Contributors & Roles (THE KEY section) ──
+  html += '<div class="inspector-section">';
+  html += '<h4><span class="section-icon">👥</span> Contributors &amp; Roles</h4>';
+
+  // Build flat contributor list across all tracks
+  const allContribs = [];
+  tracks.forEach((t, ti) => {
+    for (const a of t.artists) {
+      allContribs.push({ name: a.name, role: a.role, instrument: null, track: t.title, trackNum: ti + 1, type: 'artist' });
+    }
+    for (const c of t.contributors) {
+      allContribs.push({ name: c.name, role: c.role, instrument: c.instrument, track: t.title, trackNum: ti + 1, type: 'contributor' });
+    }
+  });
+
+  // Also check release-level contributors (outside SoundRecording)
+  const relContribs = doc.querySelectorAll('ResourceList > ResourceContributor, ReleaseList ResourceContributor');
+  for (const c of relContribs) {
+    const name = c.getElementsByTagName('FullName')[0]?.textContent.trim()
+      || c.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
+    const role = c.getElementsByTagName('ResourceContributorRole')[0]?.textContent.trim() || null;
+    const instrument = c.getElementsByTagName('InstrumentType')[0]?.textContent.trim() || null;
+    allContribs.push({ name, role, instrument, track: 'Release-level', trackNum: 0, type: 'contributor' });
+  }
+
+  if (allContribs.length > 0) {
+    html += '<table class="inspector-table">';
+    html += '<thead><tr><th>Name</th><th>Role</th><th>Instrument</th><th>Track</th></tr></thead>';
+    html += '<tbody>';
+    for (const c of allContribs) {
+      const roleClass = getRoleBadgeClass(c.role);
+      const roleDisplay = formatRoleName(c.role);
+      const instDisplay = c.instrument ? esc(c.instrument) : '<span style="color:var(--dim)">—</span>';
+      const trackDisplay = c.trackNum > 0 ? `<span class="track-num" style="width:18px;height:18px;font-size:0.65rem;display:inline-flex">${c.trackNum}</span> ${esc(c.track)}` : esc(c.track);
+      html += `<tr>
+        <td><strong>${esc(c.name)}</strong></td>
+        <td><span class="role-badge ${roleClass}">${esc(roleDisplay)}</span></td>
+        <td>${instDisplay}</td>
+        <td style="font-size:0.8rem">${trackDisplay}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  } else {
+    html += '<div class="inspector-empty">No contributors found in this XML.</div>';
+  }
+  html += '</div>';
+
+  // ── Track Listing ──
+  html += '<div class="inspector-section">';
+  html += '<h4><span class="section-icon">🎵</span> Tracks</h4>';
+
+  if (tracks.length > 0) {
+    tracks.forEach((t, ti) => {
+      html += '<div class="track-card">';
+      html += '<div class="track-card-header">';
+      html += `<span class="track-num">${ti + 1}</span>`;
+      html += `<span class="track-title">${esc(t.title)}</span>`;
+      html += '</div>';
+      html += '<div class="track-meta">';
+      if (t.isrc) html += `<span>ISRC: <code>${esc(t.isrc)}</code></span>`;
+      if (t.duration) html += `<span>Duration: <code>${esc(t.duration)}</code></span>`;
+      html += '</div>';
+
+      // Track contributors
+      const trackPeople = [...t.artists.map(a => ({ ...a, instrument: null })), ...t.contributors];
+      if (trackPeople.length > 0) {
+        html += '<div class="track-contributors">';
+        for (const p of trackPeople) {
+          const roleClass = getRoleBadgeClass(p.role);
+          html += `<span class="track-contributor">
+            <span class="contrib-name">${esc(p.name)}</span>
+            <span class="role-badge ${roleClass}">${esc(formatRoleName(p.role))}</span>
+            ${p.instrument ? `<span style="color:var(--dim);font-size:0.72rem">(${esc(p.instrument)})</span>` : ''}
+          </span>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  } else {
+    html += '<div class="inspector-empty">No tracks found in this XML.</div>';
+  }
+  html += '</div>';
+
+  // ── Deal Terms ──
+  if (deals.length > 0) {
+    html += '<div class="inspector-section">';
+    html += '<h4><span class="section-icon">📋</span> Deal Terms</h4>';
+    html += '<table class="inspector-table">';
+    html += '<thead><tr><th>Territory</th><th>Commercial Model</th><th>Use Type</th><th>Start Date</th><th>End Date</th></tr></thead>';
+    html += '<tbody>';
+    for (const d of deals) {
+      const terrDisplay = d.territories.length > 0 ? d.territories.join(', ') : '<span style="color:var(--dim)">—</span>';
+      html += `<tr>
+        <td><code>${terrDisplay}</code></td>
+        <td>${d.model ? esc(formatRoleName(d.model)) : '<span style="color:var(--dim)">—</span>'}</td>
+        <td>${d.useType ? esc(formatRoleName(d.useType)) : '<span style="color:var(--dim)">—</span>'}</td>
+        <td style="font-family:var(--font-mono);font-size:0.8rem">${d.startDate ? esc(d.startDate) : '—'}</td>
+        <td style="font-family:var(--font-mono);font-size:0.8rem">${d.endDate ? esc(d.endDate) : '—'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    html += '</div>';
+  }
+
+  // ── Technical Metadata ──
+  html += '<div class="inspector-section">';
+  html += '<h4><span class="section-icon">⚙️</span> Technical Metadata</h4>';
+  const techFields = [
+    { label: 'Message ID', value: meta.messageId, mono: true },
+    { label: 'Thread ID', value: meta.messageThreadId, mono: true },
+    { label: 'Created', value: meta.messageCreated, mono: true },
+    { label: 'DSP / Recipient', value: meta.dsp },
+    { label: 'File Name', value: file.name },
+    { label: 'File Size', value: formatSize(file.size) },
+  ].filter(f => f.value);
+
+  html += '<table class="inspector-table">';
+  for (const f of techFields) {
+    html += `<tr>
+      <td style="width:160px;font-weight:600;color:var(--dim)">${esc(f.label)}</td>
+      <td ${f.mono ? 'style="font-family:var(--font-mono);font-size:0.82rem"' : ''}>${esc(f.value)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  html += '</div>';
+
+  results.innerHTML = html;
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ─── Main Comparison ─────────────────────────────────────────────────────────
