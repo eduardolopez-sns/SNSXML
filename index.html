@@ -2435,8 +2435,8 @@ function renderResults(pairResults, warningHtml, opts) {
   let html = warningHtml || '';
   const mode = opts?.mode || 'two-file';
 
-  // Release Info Card (from first file)
-  const meta = extractMeta(state.files[0].doc);
+  // Release Info Card (from newest file)
+  const meta = extractMeta(state.files[state.files.length - 1].doc);
   html += renderReleaseCard(meta);
 
   if (mode === 'multi-file') {
