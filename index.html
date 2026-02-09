@@ -557,6 +557,81 @@ header {
 .change-desc .old-val { color: var(--red); }
 .change-desc .new-val { color: var(--green); }
 
+/* ── DDEX Tooltips ── */
+.ddex-tip {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dotted var(--dim);
+}
+.ddex-tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1c2333;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 340px;
+  white-space: normal;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.ddex-tip:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1c2333;
+  z-index: 1001;
+  pointer-events: none;
+}
+
+/* ── Filter Bar ── */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.filter-pill.active {
+  background: rgba(56, 139, 253, 0.12);
+  border-color: rgba(56, 139, 253, 0.3);
+  color: var(--blue);
+}
+.filter-pill:hover { border-color: var(--dim); }
+.filter-pill .pill-count {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+.change-item.filtered-out { display: none !important; }
+
 /* ── Unchanged Grid ── */
 .unchanged-grid {
   display: grid;
@@ -840,6 +915,79 @@ const state = {
   files: [],        // { name, size, content, doc }
   maxFiles: 5,
 };
+
+// ─── DDEX Field Tooltips (sourced from kb.ddex.net) ──────────────────────────
+const DDEX_TIPS = {
+  MessageId: 'Unique ID for this specific delivery message',
+  MessageThreadId: 'Groups related messages in the same delivery batch',
+  MessageCreatedDateTime: 'When this delivery file was generated',
+  DisplayTitleText: 'The track or release title shown to listeners',
+  TitleText: 'The official title of the track or release',
+  DisplayArtistName: 'The artist name shown to listeners (e.g. "Jay-Z feat. Alicia Keys")',
+  ArtistName: 'The official name of the artist',
+  ISRC: 'Unique 12-character code identifying a specific sound recording',
+  ICPN: 'The barcode (UPC/EAN) identifying the release product',
+  LabelName: 'The record label name shown on the release',
+  ReleaseType: 'How the release is classified (Single, Album, EP, etc.)',
+  ReleaseDate: 'When this version of the release was made available',
+  OriginalReleaseDate: 'When the original release first came out anywhere in the world',
+  GenreText: 'The genre classification of the release',
+  PLineText: 'Sound recording copyright — "(P) Year Owner"',
+  CLineText: 'Copyright notice for artwork/composition — "(C) Year Owner"',
+  ParentalWarningType: 'Explicit content flag (Explicit, Clean, or Not Explicit)',
+  RightsType: 'The type of rights being claimed (copyright, mechanical, performance)',
+  RightSharePercentage: 'The % of rights a specific party owns or controls',
+  CommercialModelType: 'How consumers pay (Subscription, Pay-per-download, Ad-supported)',
+  ValidityPeriod: 'The date range when a deal is active (start and end dates)',
+  Duration: 'Playback length of the recording',
+  LanguageAndScriptCode: 'Language used in the metadata text fields',
+  FileName: 'Name of the delivered audio/image file',
+  FilePath: 'Path to the delivered audio/image file',
+  ImageId: 'Identifier for the cover art image',
+  ResourceContributor: 'Person who contributed to the recording (producer, composer, etc.)',
+  ProprietaryId: 'Custom ID assigned by a DSP or label (e.g. Spotify artist ID)',
+  MessageHeader: 'Section with sender, recipient, and message tracking info',
+  PartyList: 'Central list of all people/companies involved (artists, labels, etc.)',
+  ResourceList: 'All audio files, videos, and images in the delivery',
+  ReleaseList: 'Release info: title, artist, UPC, genre, label — but not deals',
+  DealList: 'Business terms: where, when, and how the music can be sold/streamed',
+};
+
+// Build regex to match DDEX tag names in HTML-escaped text
+const DDEX_TAG_RE = new RegExp('\\b(' + Object.keys(DDEX_TIPS).join('|') + ')\\b', 'g');
+
+function tipWrap(text) {
+  return text.replace(DDEX_TAG_RE, (match) => {
+    const tip = DDEX_TIPS[match];
+    if (!tip) return match;
+    return `<span class="ddex-tip" data-tip="${esc(tip)}">${match}</span>`;
+  });
+}
+
+// ─── Field Filter Categories ─────────────────────────────────────────────────
+const FIELD_CATEGORIES = {
+  identifiers: { label: 'Identifiers', tags: ['ISRC', 'ICPN', 'MessageId', 'MessageThreadId', 'ProprietaryId'] },
+  titles: { label: 'Titles & Artists', tags: ['DisplayTitleText', 'TitleText', 'DisplayArtistName', 'ArtistName', 'Title'] },
+  rights: { label: 'Rights & Legal', tags: ['RightsType', 'RightSharePercentage', 'PLineText', 'CLineText'] },
+  deals: { label: 'Deal Terms', tags: ['CommercialModelType', 'ValidityPeriod', 'DealList'] },
+  dates: { label: 'Dates', tags: ['ReleaseDate', 'OriginalReleaseDate', 'MessageCreatedDateTime'] },
+  content: { label: 'Content', tags: ['GenreText', 'ParentalWarningType', 'Duration', 'LanguageAndScriptCode'] },
+  media: { label: 'Media Files', tags: ['FileName', 'FilePath', 'ImageId'] },
+  contributors: { label: 'Contributors', tags: ['ResourceContributor'] },
+};
+
+function detectCategory(text) {
+  const plain = text.replace(/<[^>]+>/g, '');
+  for (const [cat, info] of Object.entries(FIELD_CATEGORIES)) {
+    for (const tag of info.tags) {
+      if (plain.includes(tag)) return cat;
+    }
+  }
+  return 'other';
+}
+
+// Track active filters per pair
+const activeFilters = {};
 
 // ─── File Upload ─────────────────────────────────────────────────────────────
 const dropzone = document.getElementById('dropzone');
@@ -1352,7 +1500,7 @@ function renderDiffTable(ops, hunks, pairId) {
         <td colspan="3">⋯ ${hunk.count} unchanged line${hunk.count > 1 ? 's' : ''} ⋯</td>
       </tr>`;
     } else if (hunk.type === 'hunk-header') {
-      html += `<tr class="hunk-header"><td colspan="3">@@ ${esc(hunk.section)} @@</td></tr>`;
+      html += `<tr class="hunk-header"><td colspan="3">@@ ${tipWrap(esc(hunk.section))} @@</td></tr>`;
     } else {
       const { op, idx } = hunk;
       const cls = op.type === 'del' ? 'line-del' : op.type === 'add' ? 'line-add' : 'line-ctx';
@@ -1372,7 +1520,7 @@ function renderDiffTable(ops, hunks, pairId) {
         codeHtml = esc(op.line);
       }
 
-      html += `<tr class="${cls}"><td class="ln">${ln}</td><td class="sign">${sign}</td><td class="code">${codeHtml}</td></tr>`;
+      html += `<tr class="${cls}"><td class="ln">${ln}</td><td class="sign">${sign}</td><td class="code">${tipWrap(codeHtml)}</td></tr>`;
     }
   }
 
@@ -1720,23 +1868,62 @@ function renderResults(pairResults) {
     if (pr.changes.length > 0) {
       const tagOrder = { add: 0, key: 1, mod: 2, del: 3 };
       const sorted = [...pr.changes].sort((a, b) => (tagOrder[a.tag] ?? 9) - (tagOrder[b.tag] ?? 9));
-      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Changed</h4>';
-      html += '<ul class="change-list" style="margin-bottom:16px">';
+
+      // Detect categories and count them for the filter bar
+      const catCounts = {};
       for (const ch of sorted) {
-        html += `<li class="change-item">
+        ch.category = detectCategory(ch.text);
+        catCounts[ch.category] = (catCounts[ch.category] || 0) + 1;
+      }
+
+      // Initialize active filters for this pair (all on by default)
+      activeFilters[i] = activeFilters[i] || {};
+      for (const cat of Object.keys(catCounts)) {
+        if (activeFilters[i][cat] === undefined) activeFilters[i][cat] = true;
+      }
+
+      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Changed</h4>';
+
+      // Filter bar (only show if there are 2+ categories)
+      const catKeys = Object.keys(catCounts);
+      if (catKeys.length > 1) {
+        html += `<div class="filter-bar" id="filterBar_${i}">`;
+        for (const cat of catKeys) {
+          const label = FIELD_CATEGORIES[cat]?.label || 'Other';
+          html += `<button class="filter-pill active" data-cat="${cat}" onclick="toggleFilter(${i}, '${cat}', this)">${label} <span class="pill-count">(${catCounts[cat]})</span></button>`;
+        }
+        html += '</div>';
+      }
+
+      html += `<ul class="change-list" id="changeList_${i}" style="margin-bottom:16px">`;
+      for (const ch of sorted) {
+        html += `<li class="change-item" data-category="${ch.category}">
           <span class="change-tag ${ch.tag}">${ch.tag}</span>
-          <span class="change-desc">${ch.text}</span>
+          <span class="change-desc">${tipWrap(ch.text)}</span>
         </li>`;
       }
       html += '</ul>';
     }
 
-    // What Stayed the Same (inline in hero)
+    // What Stayed the Same (inline in hero) — with tooltips
     if (pr.unchanged.length > 0) {
+      // Map display labels to DDEX tag names for tooltips
+      const unchangedTipMap = {
+        'Track title': 'DisplayTitleText', 'Artist name': 'DisplayArtistName',
+        'ISRC': 'ISRC', 'UPC': 'ICPN', 'Label': 'LabelName',
+        'Audio file': 'FileName', 'Cover art': 'ImageId', 'Genre': 'GenreText',
+        'Release date': 'ReleaseDate', 'P-Line/C-Line': 'PLineText',
+        'Parental advisory': 'ParentalWarningType', 'Rights': 'RightsType',
+        'Contributors': 'ResourceContributor', 'Deal terms': 'CommercialModelType',
+        'Duration': 'Duration', 'Language': 'LanguageAndScriptCode',
+      };
       html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Stayed the Same</h4>';
       html += '<div class="unchanged-grid">';
       for (const item of pr.unchanged) {
-        html += `<div class="unchanged-item"><span class="check">✓</span> ${esc(item)}</div>`;
+        const ddexTag = unchangedTipMap[item];
+        const tip = ddexTag && DDEX_TIPS[ddexTag] ? ` data-tip="${esc(DDEX_TIPS[ddexTag])}"` : '';
+        const tipClass = tip ? ' ddex-tip' : '';
+        html += `<div class="unchanged-item"><span class="check">✓</span> <span class="${tipClass}"${tip}>${esc(item)}</span></div>`;
       }
       html += '</div>';
     }
@@ -1840,6 +2027,25 @@ function toggleTechDetails(btn) {
   btn.classList.toggle('open');
   const content = btn.nextElementSibling;
   content.classList.toggle('open');
+}
+
+function toggleFilter(pairIdx, category, btn) {
+  activeFilters[pairIdx] = activeFilters[pairIdx] || {};
+  const isActive = btn.classList.toggle('active');
+  activeFilters[pairIdx][category] = isActive;
+
+  // Filter change items in the list
+  const list = document.getElementById(`changeList_${pairIdx}`);
+  if (list) {
+    list.querySelectorAll('.change-item').forEach(li => {
+      const cat = li.getAttribute('data-category');
+      if (activeFilters[pairIdx][cat] === false) {
+        li.classList.add('filtered-out');
+      } else {
+        li.classList.remove('filtered-out');
+      }
+    });
+  }
 }
 
 function formatSize(bytes) {
