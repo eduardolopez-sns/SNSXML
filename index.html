@@ -2473,18 +2473,20 @@ function renderResults(pairResults, warningHtml, opts) {
       const tag = i === 0 ? ' [Oldest]' : i === lastIdx ? ' [Newest]' : '';
       return esc(f.name) + tag;
     };
+    // List newest first in dropdowns
+    const filesDesc = state.files.map((f, i) => ({ f, i })).reverse();
     html += `<select id="compareSelectA" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
-    state.files.forEach((f, i) => {
+    for (const { f, i } of filesDesc) {
       const sel = i === opts.selectedA ? ' selected' : '';
       html += `<option value="${i}"${sel}>${fileLabel(f, i)}</option>`;
-    });
+    }
     html += '</select>';
     html += '<span style="color:var(--dim);font-size:0.9rem">vs</span>';
     html += `<select id="compareSelectB" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
-    state.files.forEach((f, i) => {
+    for (const { f, i } of filesDesc) {
       const sel = i === opts.selectedB ? ' selected' : '';
       html += `<option value="${i}"${sel}>${fileLabel(f, i)}</option>`;
-    });
+    }
     html += '</select>';
     html += '</div>';
 
