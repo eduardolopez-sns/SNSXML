@@ -2001,30 +2001,57 @@ function validateFiles(files) {
 
 // ─── Inspector Mode ──────────────────────────────────────────────────────────
 
+// Helper: extract a person's name from a DDEX element (handles FullName, KeyName, PartyName, and namespaced tags)
+function extractPartyName(el) {
+  // Try FullName (with and without namespace)
+  const fullName = el.getElementsByTagName('FullName')[0] || el.getElementsByTagNameNS('*', 'FullName')[0];
+  if (fullName) return fullName.textContent.trim();
+  // Try KeyName + NamesBeforeKeyName
+  const keyName = el.getElementsByTagName('KeyName')[0] || el.getElementsByTagNameNS('*', 'KeyName')[0];
+  if (keyName) {
+    const before = el.getElementsByTagName('NamesBeforeKeyName')[0] || el.getElementsByTagNameNS('*', 'NamesBeforeKeyName')[0];
+    return before ? `${before.textContent.trim()} ${keyName.textContent.trim()}` : keyName.textContent.trim();
+  }
+  // Try PartyName text content
+  const partyName = el.getElementsByTagName('PartyName')[0] || el.getElementsByTagNameNS('*', 'PartyName')[0];
+  if (partyName) return partyName.textContent.trim();
+  return null;
+}
+
+// Helper: get element by tag name, trying both plain and namespaced
+function getTag(parent, tag) {
+  return parent.getElementsByTagName(tag)[0] || parent.getElementsByTagNameNS('*', tag)[0] || null;
+}
+
 function extractTracks(doc) {
   const tracks = [];
-  const recordings = doc.getElementsByTagName('SoundRecording');
+  const recordings = doc.getElementsByTagName('SoundRecording').length > 0
+    ? doc.getElementsByTagName('SoundRecording')
+    : doc.getElementsByTagNameNS('*', 'SoundRecording');
   for (const rec of recordings) {
-    const get = (tag) => { const el = rec.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : null; };
+    const get = (tag) => { const el = getTag(rec, tag); return el ? el.textContent.trim() : null; };
 
     // Contributors
     const contributors = [];
-    const contribs = rec.getElementsByTagName('ResourceContributor');
+    let contribs = rec.getElementsByTagName('ResourceContributor');
+    if (contribs.length === 0) contribs = rec.getElementsByTagNameNS('*', 'ResourceContributor');
     for (const c of contribs) {
-      const name = c.getElementsByTagName('FullName')[0]?.textContent.trim()
-        || c.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
-      const role = c.getElementsByTagName('ResourceContributorRole')[0]?.textContent.trim() || null;
-      const instrument = c.getElementsByTagName('InstrumentType')[0]?.textContent.trim() || null;
+      const name = extractPartyName(c) || 'Unknown';
+      const roleEl = getTag(c, 'ResourceContributorRole');
+      const role = roleEl ? roleEl.textContent.trim() : null;
+      const instEl = getTag(c, 'InstrumentType');
+      const instrument = instEl ? instEl.textContent.trim() : null;
       contributors.push({ name, role, instrument });
     }
 
     // Display artists
     const artists = [];
-    const displayArtists = rec.getElementsByTagName('DisplayArtist');
+    let displayArtists = rec.getElementsByTagName('DisplayArtist');
+    if (displayArtists.length === 0) displayArtists = rec.getElementsByTagNameNS('*', 'DisplayArtist');
     for (const a of displayArtists) {
-      const name = a.getElementsByTagName('FullName')[0]?.textContent.trim()
-        || a.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
-      const role = a.getElementsByTagName('DisplayArtistRole')[0]?.textContent.trim() || null;
+      const name = extractPartyName(a) || 'Unknown';
+      const roleEl = getTag(a, 'DisplayArtistRole');
+      const role = roleEl ? roleEl.textContent.trim() : null;
       artists.push({ name, role });
     }
 
@@ -2127,10 +2154,11 @@ function runInspector() {
   // Also check release-level contributors (outside SoundRecording)
   const relContribs = doc.querySelectorAll('ResourceList > ResourceContributor, ReleaseList ResourceContributor');
   for (const c of relContribs) {
-    const name = c.getElementsByTagName('FullName')[0]?.textContent.trim()
-      || c.getElementsByTagName('PartyName')[0]?.textContent.trim() || 'Unknown';
-    const role = c.getElementsByTagName('ResourceContributorRole')[0]?.textContent.trim() || null;
-    const instrument = c.getElementsByTagName('InstrumentType')[0]?.textContent.trim() || null;
+    const name = extractPartyName(c) || 'Unknown';
+    const roleEl = getTag(c, 'ResourceContributorRole');
+    const role = roleEl ? roleEl.textContent.trim() : null;
+    const instEl = getTag(c, 'InstrumentType');
+    const instrument = instEl ? instEl.textContent.trim() : null;
     allContribs.push({ name, role, instrument, track: 'Release-level', trackNum: 0, type: 'contributor' });
   }
 
