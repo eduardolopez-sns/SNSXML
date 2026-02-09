@@ -882,6 +882,30 @@ header {
 
 .loading-text { color: var(--dim); font-size: 0.9rem; }
 
+/* ── Timezone Pills ── */
+.tz-pills {
+  display: inline-flex;
+  gap: 4px;
+}
+.tz-pill {
+  padding: 2px 8px;
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 600;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tz-pill:hover { border-color: var(--dim); }
+.tz-pill.active {
+  background: rgba(56, 139, 253, 0.12);
+  border-color: rgba(56, 139, 253, 0.3);
+  color: var(--blue);
+}
+
 /* ── Inspector Mode ── */
 .inspector-section {
   background: var(--surface);
@@ -2300,7 +2324,7 @@ function runInspector() {
   const techFields = [
     { label: 'Message ID', value: meta.messageId, mono: true },
     { label: 'Thread ID', value: meta.messageThreadId, mono: true },
-    { label: 'Created', value: meta.messageCreated, mono: true },
+    { label: 'Created', value: meta.messageCreated, mono: true, isDateTime: true },
     { label: 'DSP / Recipient', value: meta.dsp },
     { label: 'File Name', value: file.name },
     { label: 'File Size', value: formatSize(file.size) },
@@ -2308,9 +2332,10 @@ function runInspector() {
 
   html += '<table class="inspector-table">';
   for (const f of techFields) {
+    const displayValue = f.isDateTime ? renderDateTimeField(f.value, 'insp_msgCreated') : esc(f.value);
     html += `<tr>
       <td style="width:160px;font-weight:600;color:var(--dim)">${esc(f.label)}</td>
-      <td ${f.mono ? 'style="font-family:var(--font-mono);font-size:0.82rem"' : ''}>${esc(f.value)}</td>
+      <td ${f.mono ? 'style="font-family:var(--font-mono);font-size:0.82rem"' : ''}>${displayValue}</td>
     </tr>`;
   }
   html += '</table>';
@@ -2628,7 +2653,7 @@ function renderReleaseCard(meta) {
     { label: 'DSP / Recipient', value: meta.dsp },
     { label: 'Original Release Date', value: meta.originalReleaseDate, mono: true },
     { label: 'Release Date', value: meta.releaseDate, mono: true },
-    { label: 'Message Created', value: meta.messageCreated, mono: true },
+    { label: 'Message Created', value: meta.messageCreated, mono: true, isDateTime: true },
   ].filter(f => f.value);
 
   if (fields.length === 0) return '';
@@ -2639,14 +2664,68 @@ function renderReleaseCard(meta) {
   html += '</div><div class="release-meta-grid">';
 
   for (const f of fields) {
+    const displayValue = f.isDateTime ? renderDateTimeField(f.value, 'rc_msgCreated') : esc(f.value);
     html += `<div class="meta-item">
       <span class="meta-label">${esc(f.label)}</span>
-      <span class="meta-value ${f.mono ? 'mono' : ''}">${esc(f.value)}</span>
+      <span class="meta-value ${f.mono ? 'mono' : ''}">${displayValue}</span>
     </div>`;
   }
 
   html += '</div></div>';
   return html;
+}
+
+// ─── Timezone & Date Formatting ──────────────────────────────────────────────
+const TZ_OPTIONS = {
+  BCN:  { label: 'BCN',     tz: 'Europe/Madrid' },
+  COL:  { label: 'Colombia', tz: 'America/Bogota' },
+  CST:  { label: 'CST (MX)', tz: 'America/Mexico_City' },
+  UTC:  { label: 'UTC',     tz: 'UTC' },
+};
+let activeTz = 'BCN'; // default
+
+function formatDateTime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  if (isNaN(d)) return isoStr;
+  const tzInfo = TZ_OPTIONS[activeTz] || TZ_OPTIONS.UTC;
+  const opts = {
+    timeZone: tzInfo.tz,
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  };
+  try {
+    return d.toLocaleString('en-GB', opts) + ' (' + tzInfo.label + ')';
+  } catch { return isoStr; }
+}
+
+// Render a timezone pill bar + formatted time (returns HTML string)
+function renderDateTimeField(isoStr, fieldId) {
+  if (!isoStr) return '—';
+  const formatted = formatDateTime(isoStr);
+  let html = `<span class="tz-datetime" id="${fieldId}" data-iso="${esc(isoStr)}">${formatted}</span>`;
+  html += `<div class="tz-pills" style="margin-top:4px">`;
+  for (const [key, info] of Object.entries(TZ_OPTIONS)) {
+    html += `<button class="tz-pill${key === activeTz ? ' active' : ''}" onclick="switchTimezone('${key}')">${info.label}</button>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function switchTimezone(tz) {
+  activeTz = tz;
+  // Update all rendered datetime fields
+  document.querySelectorAll('.tz-datetime').forEach(el => {
+    const iso = el.getAttribute('data-iso');
+    if (iso) el.textContent = formatDateTime(iso);
+  });
+  // Update pill active states
+  document.querySelectorAll('.tz-pills').forEach(bar => {
+    bar.querySelectorAll('.tz-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.textContent.trim() === TZ_OPTIONS[tz].label);
+    });
+  });
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
