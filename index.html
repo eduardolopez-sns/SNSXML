@@ -1716,11 +1716,13 @@ function renderResults(pairResults) {
       </div>
       <p class="summary-hero-text">${pr.conclusion.text}</p>`;
 
-    // What Changed (inline in hero)
+    // What Changed (inline in hero) — grouped: ADD → KEY → MOD → DEL
     if (pr.changes.length > 0) {
+      const tagOrder = { ADD: 0, KEY: 1, MOD: 2, DEL: 3 };
+      const sorted = [...pr.changes].sort((a, b) => (tagOrder[a.tag] ?? 9) - (tagOrder[b.tag] ?? 9));
       html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Changed</h4>';
       html += '<ul class="change-list" style="margin-bottom:16px">';
-      for (const ch of pr.changes) {
+      for (const ch of sorted) {
         html += `<li class="change-item">
           <span class="change-tag ${ch.tag}">${ch.tag}</span>
           <span class="change-desc">${ch.text}</span>
