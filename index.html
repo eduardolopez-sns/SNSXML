@@ -1067,8 +1067,8 @@ header {
     <div class="file-chips" id="fileChips"></div>
     <div id="uploadMessages"></div>
     <div class="upload-actions" id="uploadActions" style="display:none">
-      <button class="btn btn-secondary" id="btnInspect" onclick="runInspector()">🔍 Inspect file</button>
       <button class="btn btn-primary" id="btnCompare" onclick="runComparison()">Compare files</button>
+      <button class="btn btn-secondary" id="btnInspect" onclick="runInspector()">🔍 Inspect file</button>
     </div>
   </div>
 
@@ -2389,8 +2389,8 @@ async function runComparison() {
       // ── 3+ files: show picker, default = newest vs previous ──
       const n = state.files.length;
       // Default: compare last two (newest vs one before)
-      const defaultA = n - 2; // older = "original"
-      const defaultB = n - 1; // newer
+      const defaultA = n - 1; // newest on left
+      const defaultB = n - 2; // previous on right
       const pr = await comparePair(state.files[defaultA], state.files[defaultB], 0);
       renderResults([pr], mismatchWarnings.html, { mode: 'multi-file', selectedA: defaultA, selectedB: defaultB });
     }
