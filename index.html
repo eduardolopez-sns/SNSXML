@@ -2023,7 +2023,44 @@ function getTag(parent, tag) {
   return parent.getElementsByTagName(tag)[0] || parent.getElementsByTagNameNS('*', tag)[0] || null;
 }
 
+// Build lookup map: PartyReference → name from <PartyList>
+function buildPartyMap(doc) {
+  const map = {};
+  const parties = doc.getElementsByTagName('Party').length > 0
+    ? doc.getElementsByTagName('Party')
+    : doc.getElementsByTagNameNS('*', 'Party');
+  for (const p of parties) {
+    const refEl = getTag(p, 'PartyReference');
+    if (!refEl) continue;
+    const ref = refEl.textContent.trim();
+    const name = extractPartyName(p);
+    if (ref && name) map[ref] = name;
+  }
+  return map;
+}
+
+// Extract role from a <Role> or <ResourceContributorRole> or <DisplayArtistRole> element
+function extractRole(el) {
+  // Check for <Role> (ERN 4.x style) — may have UserDefinedValue attribute
+  const roleEl = getTag(el, 'Role');
+  if (roleEl) {
+    const userDefined = roleEl.getAttribute('UserDefinedValue');
+    if (userDefined) return userDefined.replace(/_/g, ' ');
+    const text = roleEl.textContent.trim();
+    if (text && text !== 'UserDefined') return text;
+    return userDefined || text || null;
+  }
+  // Check for <ResourceContributorRole> (ERN 3.x style)
+  const rcrEl = getTag(el, 'ResourceContributorRole');
+  if (rcrEl) return rcrEl.textContent.trim();
+  // Check for <DisplayArtistRole>
+  const darEl = getTag(el, 'DisplayArtistRole');
+  if (darEl) return darEl.textContent.trim();
+  return null;
+}
+
 function extractTracks(doc) {
+  const partyMap = buildPartyMap(doc);
   const tracks = [];
   const recordings = doc.getElementsByTagName('SoundRecording').length > 0
     ? doc.getElementsByTagName('SoundRecording')
@@ -2031,27 +2068,38 @@ function extractTracks(doc) {
   for (const rec of recordings) {
     const get = (tag) => { const el = getTag(rec, tag); return el ? el.textContent.trim() : null; };
 
-    // Contributors
+    // Contributors — try <Contributor> (ERN 4.x) then <ResourceContributor> (ERN 3.x)
     const contributors = [];
-    let contribs = rec.getElementsByTagName('ResourceContributor');
-    if (contribs.length === 0) contribs = rec.getElementsByTagNameNS('*', 'ResourceContributor');
-    for (const c of contribs) {
-      const name = extractPartyName(c) || 'Unknown';
-      const roleEl = getTag(c, 'ResourceContributorRole');
-      const role = roleEl ? roleEl.textContent.trim() : null;
+    let contribs = rec.getElementsByTagName('Contributor');
+    if (contribs.length === 0) contribs = rec.getElementsByTagNameNS('*', 'Contributor');
+    // Filter out DisplayArtist children that happen to match
+    const contribArray = [...contribs].filter(c => c.parentElement === rec || c.parentElement?.localName === 'SoundRecording');
+    // Also check ResourceContributor
+    let resContribs = rec.getElementsByTagName('ResourceContributor');
+    if (resContribs.length === 0) resContribs = rec.getElementsByTagNameNS('*', 'ResourceContributor');
+
+    for (const c of [...contribArray, ...resContribs]) {
+      // Resolve name: try party reference first, then inline name
+      const partyRefEl = getTag(c, 'ContributorPartyReference');
+      const partyRef = partyRefEl ? partyRefEl.textContent.trim() : null;
+      const name = (partyRef && partyMap[partyRef]) || extractPartyName(c) || 'Unknown';
+      const role = extractRole(c);
       const instEl = getTag(c, 'InstrumentType');
       const instrument = instEl ? instEl.textContent.trim() : null;
       contributors.push({ name, role, instrument });
     }
 
-    // Display artists
+    // Display artists — resolve via ArtistPartyReference
     const artists = [];
     let displayArtists = rec.getElementsByTagName('DisplayArtist');
     if (displayArtists.length === 0) displayArtists = rec.getElementsByTagNameNS('*', 'DisplayArtist');
-    for (const a of displayArtists) {
-      const name = extractPartyName(a) || 'Unknown';
-      const roleEl = getTag(a, 'DisplayArtistRole');
-      const role = roleEl ? roleEl.textContent.trim() : null;
+    // Only direct children of this SoundRecording
+    const artistArray = [...displayArtists].filter(a => a.closest('SoundRecording') === rec);
+    for (const a of artistArray) {
+      const partyRefEl = getTag(a, 'ArtistPartyReference');
+      const partyRef = partyRefEl ? partyRefEl.textContent.trim() : null;
+      const name = (partyRef && partyMap[partyRef]) || extractPartyName(a) || 'Unknown';
+      const role = extractRole(a);
       artists.push({ name, role });
     }
 
@@ -2107,11 +2155,11 @@ function extractDeals(doc) {
 
 function getRoleBadgeClass(role) {
   if (!role) return 'other-role';
-  const r = role.toLowerCase();
-  if (r.includes('mainartist') || r.includes('featuredartist') || r === 'artist') return 'artist';
+  const r = role.toLowerCase().replace(/[_-]/g, ' ');
+  if (r.includes('main artist') || r.includes('mainartist') || r.includes('featured') || r === 'artist') return 'artist';
   if (r.includes('composer') || r.includes('lyricist') || r.includes('arranger') || r.includes('author') || r.includes('writer')) return 'writer';
-  if (r.includes('vocalist') || r.includes('musician') || r.includes('performer') || r.includes('chorus') || r.includes('soloist') || r.includes('conductor') || r.includes('orchestra')) return 'performer';
-  if (r.includes('producer') || r.includes('mixer') || r.includes('engineer') || r.includes('remixer') || r.includes('mastering')) return 'production';
+  if (r.includes('vocal') || r.includes('musician') || r.includes('performer') || r.includes('choir') || r.includes('chorus') || r.includes('soloist') || r.includes('conductor') || r.includes('orchestra') || r.includes('guitar') || r.includes('bass') || r.includes('drum') || r.includes('keyboard') || r.includes('piano') || r.includes('background')) return 'performer';
+  if (r.includes('producer') || r.includes('mixer') || r.includes('mixing') || r.includes('engineer') || r.includes('recording') || r.includes('remixer') || r.includes('mastering')) return 'production';
   return 'other-role';
 }
 
@@ -2152,11 +2200,15 @@ function runInspector() {
   });
 
   // Also check release-level contributors (outside SoundRecording)
-  const relContribs = doc.querySelectorAll('ResourceList > ResourceContributor, ReleaseList ResourceContributor');
+  const partyMap = buildPartyMap(doc);
+  const relContribs = doc.querySelectorAll('ResourceList > ResourceContributor, ReleaseList ResourceContributor, ResourceList > Contributor, ReleaseList Contributor');
   for (const c of relContribs) {
-    const name = extractPartyName(c) || 'Unknown';
-    const roleEl = getTag(c, 'ResourceContributorRole');
-    const role = roleEl ? roleEl.textContent.trim() : null;
+    // Skip if inside a SoundRecording (already captured above)
+    if (c.closest('SoundRecording')) continue;
+    const partyRefEl = getTag(c, 'ContributorPartyReference');
+    const partyRef = partyRefEl ? partyRefEl.textContent.trim() : null;
+    const name = (partyRef && partyMap[partyRef]) || extractPartyName(c) || 'Unknown';
+    const role = extractRole(c);
     const instEl = getTag(c, 'InstrumentType');
     const instrument = instEl ? instEl.textContent.trim() : null;
     allContribs.push({ name, role, instrument, track: 'Release-level', trackNum: 0, type: 'contributor' });
