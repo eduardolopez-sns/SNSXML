@@ -1789,8 +1789,8 @@ function validateFiles(files) {
     return {
       block: true,
       html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6;display:block">
-        <strong>These files are from different releases.</strong><br>
-        The UPC/barcode doesn't match across all files. You can only compare different versions of the <em>same</em> release.<br><br>
+        <p style="margin:0 0 10px 0"><strong>These files are from different releases.</strong><br>
+        The UPC/barcode doesn&rsquo;t match across all files. You can only compare different versions of the <em>same</em> release.</p>
         <ul style="margin:0;padding-left:20px">${details}</ul>
       </div>`
     };
@@ -1976,7 +1976,8 @@ function renderResults(pairResults, warningHtml) {
         if (activeFilters[i][cat] === undefined) activeFilters[i][cat] = true;
       }
 
-      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Changed</h4>';
+      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">What Changed</h4>';
+      html += `<div style="font-size:0.78rem;color:var(--dim);margin-bottom:10px"><span class="old-val" style="color:var(--red)">${esc(pr.pair.a.name)}</span> → <span class="new-val" style="color:var(--green)">${esc(pr.pair.b.name)}</span></div>`;
 
       // Filter bar (only show if there are 2+ categories)
       const catKeys = Object.keys(catCounts);
