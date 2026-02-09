@@ -330,6 +330,20 @@ header {
 
 .pair-tab:hover { color: var(--text); }
 .pair-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.pair-tab .latest-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #000;
+  background: var(--green);
+  border-radius: 9px;
+  vertical-align: middle;
+  line-height: 1.6;
+}
 
 /* ── Diff File Header ── */
 .diff-file-header {
@@ -1676,7 +1690,9 @@ function renderResults(pairResults) {
   if (pairResults.length > 1) {
     html += '<div class="pair-tabs" id="pairTabs">';
     pairResults.forEach((pr, i) => {
-      html += `<button class="pair-tab ${i === 0 ? 'active' : ''}" onclick="switchPair(${i})">${esc(pr.pair.a.name)} vs ${esc(pr.pair.b.name)}</button>`;
+      const isLatest = i === pairResults.length - 1;
+      const badge = isLatest ? '<span class="latest-badge">Latest</span>' : '';
+      html += `<button class="pair-tab ${i === 0 ? 'active' : ''}" onclick="switchPair(${i})">${esc(pr.pair.a.name)} vs ${esc(pr.pair.b.name)}${badge}</button>`;
     });
     html += '</div>';
   }
