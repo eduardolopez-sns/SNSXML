@@ -1981,9 +1981,9 @@ function renderResults(pairResults, warningHtml) {
 
     // ── File comparison bar ──
     html += `<div class="compare-bar">
-      <span class="file-label"><span class="file-badge older">Original</span> ${esc(pr.pair.a.name)}</span>
-      <span class="compare-arrow">→</span>
       <span class="file-label"><span class="file-badge newer">New</span> ${esc(pr.pair.b.name)}</span>
+      <span class="compare-arrow">←</span>
+      <span class="file-label"><span class="file-badge older">Original</span> ${esc(pr.pair.a.name)}</span>
     </div>`;
 
     // ── Summary (hero — first thing non-tech users see) ──
