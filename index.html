@@ -1686,12 +1686,14 @@ function renderResults(pairResults) {
   const meta = extractMeta(state.files[0].doc);
   html += renderReleaseCard(meta);
 
+  // Reverse so newest comparison is first
+  pairResults.reverse();
+
   // Pair tabs if multiple pairs
   if (pairResults.length > 1) {
     html += '<div class="pair-tabs" id="pairTabs">';
     pairResults.forEach((pr, i) => {
-      const isLatest = i === pairResults.length - 1;
-      const badge = isLatest ? '<span class="latest-badge">Latest</span>' : '';
+      const badge = i === 0 ? '<span class="latest-badge">Latest</span>' : '';
       html += `<button class="pair-tab ${i === 0 ? 'active' : ''}" onclick="switchPair(${i})">${esc(pr.pair.a.name)} vs ${esc(pr.pair.b.name)}${badge}</button>`;
     });
     html += '</div>';
