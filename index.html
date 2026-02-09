@@ -2454,15 +2454,39 @@ async function recompareFromDropdowns() {
   }
 }
 
+function switchReleaseCard() {
+  const sel = document.getElementById('releaseCardSelect');
+  if (!sel) return;
+  const idx = parseInt(sel.value);
+  const meta = extractMeta(state.files[idx].doc);
+  const container = document.getElementById('releaseCardContainer');
+  if (container) container.innerHTML = renderReleaseCard(meta);
+}
+
 // ─── Render Results ──────────────────────────────────────────────────────────
 function renderResults(pairResults, warningHtml, opts) {
   const results = document.getElementById('results');
   let html = warningHtml || '';
   const mode = opts?.mode || 'two-file';
 
-  // Release Info Card (from newest file)
-  const meta = extractMeta(state.files[state.files.length - 1].doc);
+  // Release Info Card (from newest file, with switcher if 2+ files)
+  const lastIdx = state.files.length - 1;
+  const meta = extractMeta(state.files[lastIdx].doc);
+  if (state.files.length >= 2) {
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
+    html += '<span style="font-size:0.78rem;font-weight:600;color:var(--dim)">Showing release info from:</span>';
+    html += `<select id="releaseCardSelect" onchange="switchReleaseCard()" style="padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.78rem;cursor:pointer">`;
+    const filesDesc = state.files.map((f, i) => ({ f, i })).reverse();
+    for (const { f, i } of filesDesc) {
+      const tag = i === 0 ? ' [Oldest]' : i === lastIdx ? ' [Newest]' : '';
+      const sel = i === lastIdx ? ' selected' : '';
+      html += `<option value="${i}"${sel}>${esc(f.name)}${tag}</option>`;
+    }
+    html += '</select></div>';
+  }
+  html += '<div id="releaseCardContainer">';
   html += renderReleaseCard(meta);
+  html += '</div>';
 
   if (mode === 'multi-file') {
     // ── 3+ files: Dropdown picker ──
