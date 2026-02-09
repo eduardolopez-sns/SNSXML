@@ -1788,7 +1788,7 @@ function validateFiles(files) {
     const details = fileInfos.map(f => `<li><strong>${esc(f.name)}</strong> — UPC: <code>${esc(f.upc || 'none')}</code>${f.title ? `, "${esc(f.title)}"` : ''}${f.artist ? ` by ${esc(f.artist)}` : ''}</li>`).join('');
     return {
       block: true,
-      html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6">
+      html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6;display:block">
         <strong>These files are from different releases.</strong><br>
         The UPC/barcode doesn't match across all files. You can only compare different versions of the <em>same</em> release.<br><br>
         <ul style="margin:0;padding-left:20px">${details}</ul>
@@ -1804,7 +1804,7 @@ function validateFiles(files) {
       const details = fileInfos.map(f => `<li><strong>${esc(f.name)}</strong> — ISRCs: <code>${esc([...f.isrcs].join(', ') || 'none')}</code></li>`).join('');
       return {
         block: true,
-        html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6">
+        html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6;display:block">
           <strong>These files appear to be from different releases.</strong><br>
           No UPC found, and the ISRC codes don't match across files.<br><br>
           <ul style="margin:0;padding-left:20px">${details}</ul>
