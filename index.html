@@ -2321,29 +2321,57 @@ function runInspector() {
 }
 
 // ─── Main Comparison ─────────────────────────────────────────────────────────
+// Sort files by date (oldest first) — shared by comparison flows
+function sortFilesByDate() {
+  state.files.sort((a, b) => {
+    const getDate = (doc) => {
+      const el = doc.getElementsByTagName('MessageCreatedDateTime')[0];
+      return el ? new Date(el.textContent.trim()) : null;
+    };
+    const da = getDate(a.doc), db = getDate(b.doc);
+    if (da && db && !isNaN(da) && !isNaN(db)) return da - db;
+    if (da && !db) return -1;
+    if (!da && db) return 1;
+    return 0;
+  });
+  renderChips();
+}
+
+// Compute a single pair comparison and return result object
+async function comparePair(fileA, fileB, idx) {
+  const linesA = prettyPrintXML(fileA.content);
+  const linesB = prettyPrintXML(fileB.content);
+  const ops = computeDiff(linesA, linesB);
+  const hunks = buildHunks(ops);
+  const pairId = `pair_${idx}`;
+  pairOpsStore[pairId] = ops;
+
+  const stats = { mod: 0, del: 0, add: 0 };
+  for (let i = 0; i < ops.length - 1; i++) {
+    if (ops[i].type === 'del' && ops[i + 1].type === 'add') { stats.mod++; i++; }
+    else if (ops[i].type === 'del') stats.del++;
+    else if (ops[i].type === 'add') stats.add++;
+  }
+  const last = ops[ops.length - 1];
+  if (last && last.type === 'del') stats.del++;
+  if (last && last.type === 'add' && (ops.length < 2 || ops[ops.length - 2].type !== 'del')) stats.add++;
+
+  const unchanged = checkUnchanged(fileA.doc, fileB.doc);
+  const changes = generateChangeSummary(ops, linesA, linesB, fileA.doc, fileB.doc);
+  const conclusion = generateConclusion(changes, unchanged, ops);
+
+  return { pair: { a: fileA, b: fileB, idx }, pairId, ops, hunks, stats, unchanged, changes, conclusion };
+}
+
 async function runComparison() {
   if (state.files.length < 2) return;
 
   const overlay = document.getElementById('loadingOverlay');
   overlay.classList.add('active');
-
-  // Yield to UI
   await new Promise(r => setTimeout(r, 50));
 
   try {
-    // Sort files by MessageCreatedDateTime (oldest first)
-    state.files.sort((a, b) => {
-      const getDate = (doc) => {
-        const el = doc.getElementsByTagName('MessageCreatedDateTime')[0];
-        return el ? new Date(el.textContent.trim()) : null;
-      };
-      const da = getDate(a.doc), db = getDate(b.doc);
-      if (da && db && !isNaN(da) && !isNaN(db)) return da - db;
-      if (da && !db) return -1;
-      if (!da && db) return 1;
-      return 0;
-    });
-    renderChips(); // refresh chips to reflect new order
+    sortFilesByDate();
 
     // ── Validate: ensure all files belong to the same release ──
     const mismatchWarnings = validateFiles(state.files);
@@ -2353,58 +2381,19 @@ async function runComparison() {
       return;
     }
 
-    const pairs = [];
-    for (let i = 0; i < state.files.length - 1; i++) {
-      pairs.push({ a: state.files[i], b: state.files[i + 1], idx: i });
+    if (state.files.length === 2) {
+      // ── 2 files: direct comparison with Original/New badges ──
+      const pr = await comparePair(state.files[0], state.files[1], 0);
+      renderResults([pr], mismatchWarnings.html, { mode: 'two-file' });
+    } else {
+      // ── 3+ files: show picker, default = newest vs previous ──
+      const n = state.files.length;
+      // Default: compare last two (newest vs one before)
+      const defaultA = n - 2; // older = "original"
+      const defaultB = n - 1; // newer
+      const pr = await comparePair(state.files[defaultA], state.files[defaultB], 0);
+      renderResults([pr], mismatchWarnings.html, { mode: 'multi-file', selectedA: defaultA, selectedB: defaultB });
     }
-
-    // Process each pair
-    const pairResults = [];
-    for (const pair of pairs) {
-      await new Promise(r => setTimeout(r, 10)); // keep UI responsive
-      const linesA = prettyPrintXML(pair.a.content);
-      const linesB = prettyPrintXML(pair.b.content);
-      const ops = computeDiff(linesA, linesB);
-      const hunks = buildHunks(ops);
-      const pairId = `pair_${pair.idx}`;
-      pairOpsStore[pairId] = ops;
-
-      const stats = {
-        mod: 0, del: 0, add: 0
-      };
-      // Count paired del/add as modifications
-      for (let i = 0; i < ops.length - 1; i++) {
-        if (ops[i].type === 'del' && ops[i + 1].type === 'add') {
-          stats.mod++;
-          i++; // skip the add
-        } else if (ops[i].type === 'del') {
-          stats.del++;
-        } else if (ops[i].type === 'add') {
-          stats.add++;
-        }
-      }
-      // Check last op if not paired
-      const last = ops[ops.length - 1];
-      if (last && last.type === 'del') stats.del++;
-      if (last && last.type === 'add' && (ops.length < 2 || ops[ops.length - 2].type !== 'del')) stats.add++;
-
-      const unchanged = checkUnchanged(pair.a.doc, pair.b.doc);
-      const changes = generateChangeSummary(ops, linesA, linesB, pair.a.doc, pair.b.doc);
-      const conclusion = generateConclusion(changes, unchanged, ops);
-
-      pairResults.push({
-        pair,
-        pairId,
-        ops,
-        hunks,
-        stats,
-        unchanged,
-        changes,
-        conclusion
-      });
-    }
-
-    renderResults(pairResults, mismatchWarnings.html);
   } catch(err) {
     console.error(err);
     document.getElementById('results').innerHTML = `<div class="msg msg-error">Error during comparison: ${esc(err.message)}</div>`;
@@ -2413,39 +2402,100 @@ async function runComparison() {
   }
 }
 
+// Re-run comparison when user changes dropdown selection (3+ files)
+async function recompareFromDropdowns() {
+  const selA = document.getElementById('compareSelectA');
+  const selB = document.getElementById('compareSelectB');
+  if (!selA || !selB) return;
+  const idxA = parseInt(selA.value);
+  const idxB = parseInt(selB.value);
+  if (idxA === idxB) {
+    document.getElementById('compareResult').innerHTML = '<div class="msg msg-info">Please select two different files to compare.</div>';
+    return;
+  }
+
+  const overlay = document.getElementById('loadingOverlay');
+  overlay.classList.add('active');
+  await new Promise(r => setTimeout(r, 30));
+
+  try {
+    const pr = await comparePair(state.files[idxA], state.files[idxB], 0);
+    // Re-render only the result area, keep picker
+    renderSinglePairResult(pr, 'compareResult');
+  } catch(err) {
+    document.getElementById('compareResult').innerHTML = `<div class="msg msg-error">Error: ${esc(err.message)}</div>`;
+  } finally {
+    overlay.classList.remove('active');
+  }
+}
+
 // ─── Render Results ──────────────────────────────────────────────────────────
-function renderResults(pairResults, warningHtml) {
+function renderResults(pairResults, warningHtml, opts) {
   const results = document.getElementById('results');
   let html = warningHtml || '';
+  const mode = opts?.mode || 'two-file';
 
   // Release Info Card (from first file)
   const meta = extractMeta(state.files[0].doc);
   html += renderReleaseCard(meta);
 
-  // Reverse so newest comparison is first
-  pairResults.reverse();
-
-  // Pair tabs if multiple pairs
-  if (pairResults.length > 1) {
-    html += '<div class="pair-tabs" id="pairTabs">';
-    pairResults.forEach((pr, i) => {
-      const badge = i === 0 ? '<span class="latest-badge">Latest</span>' : '';
-      html += `<button class="pair-tab ${i === 0 ? 'active' : ''}" onclick="switchPair(${i})">${esc(pr.pair.a.name)} vs ${esc(pr.pair.b.name)}${badge}</button>`;
+  if (mode === 'multi-file') {
+    // ── 3+ files: Dropdown picker ──
+    html += '<div class="compare-picker" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">';
+    html += '<span style="font-size:0.85rem;font-weight:600;color:var(--dim)">Compare:</span>';
+    html += `<select id="compareSelectA" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
+    state.files.forEach((f, i) => {
+      const sel = i === opts.selectedA ? ' selected' : '';
+      html += `<option value="${i}"${sel}>${esc(f.name)}</option>`;
     });
+    html += '</select>';
+    html += '<span style="color:var(--dim);font-size:0.9rem">vs</span>';
+    html += `<select id="compareSelectB" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
+    state.files.forEach((f, i) => {
+      const sel = i === opts.selectedB ? ' selected' : '';
+      html += `<option value="${i}"${sel}>${esc(f.name)}</option>`;
+    });
+    html += '</select>';
     html += '</div>';
+
+    // Result container for dynamic updates
+    html += '<div id="compareResult"></div>';
+    results.innerHTML = html;
+
+    // Render the default pair into the container
+    renderSinglePairResult(pairResults[0], 'compareResult');
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
   }
 
-  // Each pair result
-  pairResults.forEach((pr, i) => {
-    const display = i === 0 ? '' : 'display:none';
-    html += `<div class="pair-result" id="pairResult_${i}" style="${display}">`;
+  // ── 2 files: direct render ──
+  const pr = pairResults[0];
+  html += `<div class="pair-result" id="pairResult_0">`;
 
-    // ── File comparison bar ──
-    html += `<div class="compare-bar">
-      <span class="file-label"><span class="file-badge newer">New</span> ${esc(pr.pair.b.name)}</span>
-      <span class="compare-arrow">←</span>
-      <span class="file-label"><span class="file-badge older">Original</span> ${esc(pr.pair.a.name)}</span>
-    </div>`;
+  // File comparison bar with badges (only for 2-file mode)
+  html += `<div class="compare-bar">
+    <span class="file-label"><span class="file-badge newer">New</span> ${esc(pr.pair.b.name)}</span>
+    <span class="compare-arrow">←</span>
+    <span class="file-label"><span class="file-badge older">Original</span> ${esc(pr.pair.a.name)}</span>
+  </div>`;
+
+  html += buildPairResultHtml(pr, 0);
+  html += '</div>'; // pair-result
+
+  results.innerHTML = html;
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Render a single pair result into a target container (used by 3+ file dropdown re-compare)
+function renderSinglePairResult(pr, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '<div class="pair-result">' + buildPairResultHtml(pr, 0) + '</div>';
+}
+
+// Shared: build the HTML for one pair result (summary + changes + tech details)
+function buildPairResultHtml(pr, i) {
+  let html = '';
 
     // ── Summary (hero — first thing non-tech users see) ──
     const verdictIcon = pr.conclusion.level === 'safe' ? '✓' : '⚠';
@@ -2502,7 +2552,6 @@ function renderResults(pairResults, warningHtml) {
 
     // What Stayed the Same (inline in hero) — with tooltips
     if (pr.unchanged.length > 0) {
-      // Map display labels to DDEX tag names for tooltips
       const unchangedTipMap = {
         'Track title': 'DisplayTitleText', 'Artist name': 'DisplayArtistName',
         'ISRC': 'ISRC', 'UPC': 'ICPN', 'Label': 'LabelName',
@@ -2558,22 +2607,7 @@ function renderResults(pairResults, warningHtml) {
 
     html += '</div></div>'; // close tech-details-content + tech-details-section
 
-    html += '</div>'; // pair-result
-  });
-
-  results.innerHTML = html;
-
-  // Scroll to results
-  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function switchPair(idx) {
-  document.querySelectorAll('.pair-tab').forEach((t, i) => {
-    t.classList.toggle('active', i === idx);
-  });
-  document.querySelectorAll('.pair-result').forEach((r, i) => {
-    r.style.display = i === idx ? '' : 'none';
-  });
+  return html;
 }
 
 // ─── Render Release Card ─────────────────────────────────────────────────────
