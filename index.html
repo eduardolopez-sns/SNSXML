@@ -2443,17 +2443,22 @@ function renderResults(pairResults, warningHtml, opts) {
     // ── 3+ files: Dropdown picker ──
     html += '<div class="compare-picker" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">';
     html += '<span style="font-size:0.85rem;font-weight:600;color:var(--dim)">Compare:</span>';
+    const lastIdx = state.files.length - 1;
+    const fileLabel = (f, i) => {
+      const tag = i === 0 ? ' [Oldest]' : i === lastIdx ? ' [Newest]' : '';
+      return esc(f.name) + tag;
+    };
     html += `<select id="compareSelectA" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
     state.files.forEach((f, i) => {
       const sel = i === opts.selectedA ? ' selected' : '';
-      html += `<option value="${i}"${sel}>${esc(f.name)}</option>`;
+      html += `<option value="${i}"${sel}>${fileLabel(f, i)}</option>`;
     });
     html += '</select>';
     html += '<span style="color:var(--dim);font-size:0.9rem">vs</span>';
     html += `<select id="compareSelectB" onchange="recompareFromDropdowns()" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:0.85rem;cursor:pointer">`;
     state.files.forEach((f, i) => {
       const sel = i === opts.selectedB ? ' selected' : '';
-      html += `<option value="${i}"${sel}>${esc(f.name)}</option>`;
+      html += `<option value="${i}"${sel}>${fileLabel(f, i)}</option>`;
     });
     html += '</select>';
     html += '</div>';
