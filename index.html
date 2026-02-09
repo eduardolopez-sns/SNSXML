@@ -347,6 +347,39 @@ header {
   line-height: 1.6;
 }
 
+/* ── Comparison File Bar ── */
+.compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  color: var(--text);
+  flex-wrap: wrap;
+}
+.compare-bar .file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.compare-bar .file-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 9px;
+  line-height: 1.6;
+}
+.compare-bar .file-badge.older { background: var(--red); color: #000; }
+.compare-bar .file-badge.newer { background: var(--green); color: #000; }
+.compare-bar .compare-arrow { color: var(--dim); font-size: 0.9rem; }
+
 /* ── Diff File Header ── */
 .diff-file-header {
   background: var(--surface);
@@ -1946,6 +1979,13 @@ function renderResults(pairResults, warningHtml) {
     const display = i === 0 ? '' : 'display:none';
     html += `<div class="pair-result" id="pairResult_${i}" style="${display}">`;
 
+    // ── File comparison bar ──
+    html += `<div class="compare-bar">
+      <span class="file-label"><span class="file-badge older">Original</span> ${esc(pr.pair.a.name)}</span>
+      <span class="compare-arrow">→</span>
+      <span class="file-label"><span class="file-badge newer">New</span> ${esc(pr.pair.b.name)}</span>
+    </div>`;
+
     // ── Summary (hero — first thing non-tech users see) ──
     const verdictIcon = pr.conclusion.level === 'safe' ? '✓' : '⚠';
     html += `<div class="summary-hero">
@@ -1976,8 +2016,7 @@ function renderResults(pairResults, warningHtml) {
         if (activeFilters[i][cat] === undefined) activeFilters[i][cat] = true;
       }
 
-      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">What Changed</h4>';
-      html += `<div style="font-size:0.78rem;color:var(--dim);margin-bottom:10px"><span class="old-val" style="color:var(--red)">${esc(pr.pair.a.name)}</span> → <span class="new-val" style="color:var(--green)">${esc(pr.pair.b.name)}</span></div>`;
+      html += '<h4 style="font-size:0.85rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">What Changed</h4>';
 
       // Filter bar (only show if there are 2+ categories)
       const catKeys = Object.keys(catCounts);
