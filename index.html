@@ -976,13 +976,24 @@ const FIELD_CATEGORIES = {
   contributors: { label: 'Contributors', tags: ['ResourceContributor'] },
 };
 
-function detectCategory(text) {
-  const plain = text.replace(/<[^>]+>/g, '');
+function detectCategory(changeObj) {
+  // First check the explicit fieldName if available
+  const fieldName = changeObj.fieldName || '';
+  const plain = (fieldName + ' ' + changeObj.text).replace(/<[^>]+>/g, '');
   for (const [cat, info] of Object.entries(FIELD_CATEGORIES)) {
     for (const tag of info.tags) {
       if (plain.includes(tag)) return cat;
     }
   }
+  // Keyword fallback for human-readable descriptions
+  const lc = plain.toLowerCase();
+  if (lc.includes('tracking id') || lc.includes('delivery tracking') || lc.includes('message')) return 'identifiers';
+  if (lc.includes('generated on') || lc.includes('days after')) return 'dates';
+  if (lc.includes('profile') || lc.includes('spotify') || lc.includes('apple music') || lc.includes('deezer') || lc.includes('proprietary')) return 'identifiers';
+  if (lc.includes('title') || lc.includes('artist')) return 'titles';
+  if (lc.includes('right') || lc.includes('copyright') || lc.includes('p-line') || lc.includes('c-line')) return 'rights';
+  if (lc.includes('deal') || lc.includes('commercial') || lc.includes('validity')) return 'deals';
+  if (lc.includes('genre') || lc.includes('parental') || lc.includes('duration') || lc.includes('language')) return 'content';
   return 'other';
 }
 
@@ -1631,10 +1642,12 @@ function generateChangeSummary(ops, linesA, linesB, docA, docB) {
       const contextLine = mod.old + ' ' + mod.new;
       const explanation = explainChange(tagName + ' ' + contextLine, oldVal, newVal);
       if (explanation) {
+        explanation.fieldName = tagName;
         changes.push(explanation);
       } else {
         changes.push({
           tag: 'mod',
+          fieldName: tagName,
           text: `<code>${esc(tagName)}</code>: <span class="old-val">${esc(oldVal)}</span> → <span class="new-val">${esc(newVal)}</span>`
         });
       }
@@ -1872,7 +1885,7 @@ function renderResults(pairResults) {
       // Detect categories and count them for the filter bar
       const catCounts = {};
       for (const ch of sorted) {
-        ch.category = detectCategory(ch.text);
+        ch.category = detectCategory(ch);
         catCounts[ch.category] = (catCounts[ch.category] || 0) + 1;
       }
 
