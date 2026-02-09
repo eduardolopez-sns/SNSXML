@@ -231,6 +231,7 @@ header {
 }
 
 .msg-error { background: var(--red-bg); color: var(--red); border: 1px solid #6e3630; }
+.msg-warn { background: rgba(210, 153, 34, 0.1); color: var(--yellow); border: 1px solid rgba(210, 153, 34, 0.25); }
 .msg-info { background: rgba(56, 139, 253, 0.08); color: var(--blue); border: 1px solid rgba(56, 139, 253, 0.2); }
 
 /* ── Release Info Card ── */
@@ -1753,6 +1754,77 @@ function generateConclusion(changes, unchangedItems, ops) {
   return { text, verdict, level };
 }
 
+// ─── File Validation ─────────────────────────────────────────────────────────
+function validateFiles(files) {
+  const get = (doc, tag) => {
+    const el = doc.getElementsByTagName(tag)[0];
+    return el ? el.textContent.trim() : null;
+  };
+  const getAll = (doc, tag) => {
+    const els = doc.getElementsByTagName(tag);
+    const vals = new Set();
+    for (const el of els) { const v = el.textContent.trim(); if (v) vals.add(v); }
+    return vals;
+  };
+
+  // Extract identifiers from each file
+  const fileInfos = files.map(f => ({
+    name: f.name,
+    upc: get(f.doc, 'ICPN'),
+    title: get(f.doc, 'DisplayTitleText') || get(f.doc, 'TitleText'),
+    artist: get(f.doc, 'DisplayArtistName') || get(f.doc, 'ArtistName'),
+    isrcs: getAll(f.doc, 'ISRC'),
+    dsp: (() => {
+      const recip = f.doc.getElementsByTagName('MessageRecipient')[0];
+      if (recip) { const fn = recip.getElementsByTagName('FullName')[0]; return fn ? fn.textContent.trim() : null; }
+      return null;
+    })(),
+  }));
+
+  // Check UPC mismatch (critical — different releases)
+  const upcs = [...new Set(fileInfos.map(f => f.upc).filter(Boolean))];
+  if (upcs.length > 1) {
+    const details = fileInfos.map(f => `<li><strong>${esc(f.name)}</strong> — UPC: <code>${esc(f.upc || 'none')}</code>${f.title ? `, "${esc(f.title)}"` : ''}${f.artist ? ` by ${esc(f.artist)}` : ''}</li>`).join('');
+    return {
+      block: true,
+      html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6">
+        <strong>These files are from different releases.</strong><br>
+        The UPC/barcode doesn't match across all files. You can only compare different versions of the <em>same</em> release.<br><br>
+        <ul style="margin:0;padding-left:20px">${details}</ul>
+      </div>`
+    };
+  }
+
+  // Check ISRC mismatch (if no UPC available)
+  if (upcs.length === 0) {
+    const allIsrcs = fileInfos.map(f => [...f.isrcs].sort().join(','));
+    const uniqueIsrcSets = [...new Set(allIsrcs.filter(Boolean))];
+    if (uniqueIsrcSets.length > 1) {
+      const details = fileInfos.map(f => `<li><strong>${esc(f.name)}</strong> — ISRCs: <code>${esc([...f.isrcs].join(', ') || 'none')}</code></li>`).join('');
+      return {
+        block: true,
+        html: `<div class="msg msg-error" style="font-size:0.92rem;line-height:1.6">
+          <strong>These files appear to be from different releases.</strong><br>
+          No UPC found, and the ISRC codes don't match across files.<br><br>
+          <ul style="margin:0;padding-left:20px">${details}</ul>
+        </div>`
+      };
+    }
+  }
+
+  let html = '';
+
+  // Check DSP mismatch (info — not a blocker, but worth noting)
+  const dsps = [...new Set(fileInfos.map(f => f.dsp).filter(Boolean))];
+  if (dsps.length > 1) {
+    html += `<div class="msg msg-warn" style="font-size:0.88rem;margin-bottom:12px">
+      ⚠ These files are addressed to different DSPs (${dsps.map(d => '<strong>' + esc(d) + '</strong>').join(', ')}). The comparison will still work, but differences may reflect DSP-specific formatting rather than actual content changes.
+    </div>`;
+  }
+
+  return { block: false, html };
+}
+
 // ─── Main Comparison ─────────────────────────────────────────────────────────
 async function runComparison() {
   if (state.files.length < 2) return;
@@ -1777,6 +1849,14 @@ async function runComparison() {
       return 0;
     });
     renderChips(); // refresh chips to reflect new order
+
+    // ── Validate: ensure all files belong to the same release ──
+    const mismatchWarnings = validateFiles(state.files);
+    if (mismatchWarnings.block) {
+      overlay.classList.remove('active');
+      document.getElementById('results').innerHTML = mismatchWarnings.html;
+      return;
+    }
 
     const pairs = [];
     for (let i = 0; i < state.files.length - 1; i++) {
@@ -1829,7 +1909,7 @@ async function runComparison() {
       });
     }
 
-    renderResults(pairResults);
+    renderResults(pairResults, mismatchWarnings.html);
   } catch(err) {
     console.error(err);
     document.getElementById('results').innerHTML = `<div class="msg msg-error">Error during comparison: ${esc(err.message)}</div>`;
@@ -1839,9 +1919,9 @@ async function runComparison() {
 }
 
 // ─── Render Results ──────────────────────────────────────────────────────────
-function renderResults(pairResults) {
+function renderResults(pairResults, warningHtml) {
   const results = document.getElementById('results');
-  let html = '';
+  let html = warningHtml || '';
 
   // Release Info Card (from first file)
   const meta = extractMeta(state.files[0].doc);
