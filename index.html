@@ -2311,17 +2311,15 @@ function runInspector() {
 
   if (allContribs.length > 0) {
     html += '<table class="inspector-table">';
-    html += '<thead><tr><th>Name</th><th>Role</th><th>Instrument</th><th>Track</th></tr></thead>';
+    html += '<thead><tr><th>Name</th><th>Role</th><th>Track</th></tr></thead>';
     html += '<tbody>';
     for (const c of allContribs) {
       const roleClass = getRoleBadgeClass(c.role);
       const roleDisplay = formatRoleName(c.role);
-      const instDisplay = c.instrument ? esc(c.instrument) : '<span style="color:var(--dim)">—</span>';
       const trackDisplay = c.trackNum > 0 ? `<span class="track-num" style="width:18px;height:18px;font-size:0.65rem;display:inline-flex">${c.trackNum}</span> ${esc(c.track)}` : esc(c.track);
       html += `<tr>
         <td><strong>${esc(c.name)}</strong></td>
         <td><span class="role-badge ${roleClass}">${esc(roleDisplay)}</span></td>
-        <td>${instDisplay}</td>
         <td style="font-size:0.8rem">${trackDisplay}</td>
       </tr>`;
     }
