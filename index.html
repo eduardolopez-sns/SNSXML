@@ -2550,17 +2550,20 @@ function runInspector() {
 
   // ── Spotify Compatibility Check ──
   const spotifyIssues = checkSpotifyCompatibility(doc, tracks, meta);
+  const errCount = spotifyIssues.filter(i => i.severity === 'error').length;
+  const warnCount = spotifyIssues.filter(i => i.severity === 'warning').length;
+  const infoCount = spotifyIssues.filter(i => i.severity === 'info').length;
+  const score = Math.max(0, 10 - (errCount * 2) - (warnCount * 1));
+  const scoreColor = score >= 8 ? 'var(--green)' : score >= 5 ? 'var(--yellow)' : 'var(--red)';
+
   html += '<div class="inspector-section">';
-  html += '<h4><span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg></span> Spotify Compatibility</h4>';
+  html += `<h4 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg></span> Spotify Compatibility</span><span style="font-size:1.4rem;font-weight:800;color:${scoreColor};letter-spacing:-0.02em">${score}/10</span></h4>`;
   if (meta.dsp) {
     html += `<div class="compat-dsp-label">● Target DSP: ${esc(meta.dsp)}</div>`;
   }
   if (spotifyIssues.length === 0) {
     html += '<div class="compat-pass">✓ No compatibility issues detected — XML looks good for Spotify</div>';
   } else {
-    const errCount = spotifyIssues.filter(i => i.severity === 'error').length;
-    const warnCount = spotifyIssues.filter(i => i.severity === 'warning').length;
-    const infoCount = spotifyIssues.filter(i => i.severity === 'info').length;
     html += `<div style="font-size:0.8rem;color:var(--dim);margin-bottom:12px">Found ${spotifyIssues.length} issue(s): `;
     if (errCount) html += `<span style="color:var(--red)">${errCount} error(s)</span> `;
     if (warnCount) html += `<span style="color:var(--yellow)">${warnCount} warning(s)</span> `;
@@ -2611,16 +2614,51 @@ function runInspector() {
   }
 
   if (allContribs.length > 0) {
-    html += '<table class="inspector-table">';
-    html += '<thead><tr><th>Name</th><th>Role</th><th>Track</th></tr></thead>';
-    html += '<tbody>';
+    // Role priority: Main Artist(0) → Featured Artist(1) → Composer(2) → Lyricist(3) → Instruments/Vocals(4) → Engineers/Production(5) → Other(6)
+    const rolePriority = (role) => {
+      if (!role) return 6;
+      const r = role.toLowerCase().replace(/[_\-]/g, ' ');
+      if (r.includes('main artist') || r === 'mainartist') return 0;
+      if (r.includes('featured') || r === 'featuredartist') return 1;
+      if (r.includes('composer')) return 2;
+      if (r.includes('lyricist') || r.includes('author') || r.includes('writer')) return 3;
+      if (r.includes('vocal') || r.includes('choir') || r.includes('chorus') || r.includes('guitar') || r.includes('bass') || r.includes('drum') || r.includes('keyboard') || r.includes('piano') || r.includes('musician') || r.includes('performer') || r.includes('conductor') || r.includes('orchestra') || r.includes('soloist') || r.includes('background')) return 4;
+      if (r.includes('producer') || r.includes('engineer') || r.includes('recording') || r.includes('mixing') || r.includes('mastering') || r.includes('remixer')) return 5;
+      return 6;
+    };
+
+    // Group by person: merge roles per unique name
+    const grouped = {};
     for (const c of allContribs) {
-      const roleClass = getRoleBadgeClass(c.role);
+      const key = c.name;
+      if (!grouped[key]) {
+        grouped[key] = { name: c.name, roles: [], tracks: [] };
+      }
       const roleDisplay = formatRoleName(c.role);
-      const trackDisplay = c.trackNum > 0 ? `<span class="track-num" style="width:18px;height:18px;font-size:0.65rem;display:inline-flex">${c.trackNum}</span> ${esc(c.track)}` : esc(c.track);
+      if (c.role && !grouped[key].roles.find(r => r.display === roleDisplay)) {
+        grouped[key].roles.push({ raw: c.role, display: roleDisplay, priority: rolePriority(c.role) });
+      }
+      const trackLabel = c.trackNum > 0 ? c.track : 'Release-level';
+      if (!grouped[key].tracks.includes(trackLabel)) grouped[key].tracks.push(trackLabel);
+    }
+
+    // Sort roles within each person by priority, then sort people by their top role
+    const groupedList = Object.values(grouped);
+    for (const g of groupedList) {
+      g.roles.sort((a, b) => a.priority - b.priority);
+      g.topPriority = g.roles.length > 0 ? g.roles[0].priority : 6;
+    }
+    groupedList.sort((a, b) => a.topPriority - b.topPriority || a.name.localeCompare(b.name));
+
+    html += '<table class="inspector-table">';
+    html += '<thead><tr><th>Name</th><th>Role(s)</th><th>Track</th></tr></thead>';
+    html += '<tbody>';
+    for (const g of groupedList) {
+      const roleBadges = g.roles.map(r => `<span class="role-badge ${getRoleBadgeClass(r.raw)}">${esc(r.display)}</span>`).join(' ');
+      const trackDisplay = g.tracks.map(t => t === 'Release-level' ? esc(t) : esc(t)).join(', ');
       html += `<tr>
-        <td><strong>${esc(c.name)}</strong></td>
-        <td><span class="role-badge ${roleClass}">${esc(roleDisplay)}</span></td>
+        <td><strong>${esc(g.name)}</strong></td>
+        <td>${roleBadges}</td>
         <td style="font-size:0.8rem">${trackDisplay}</td>
       </tr>`;
     }
