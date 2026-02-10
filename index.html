@@ -2914,7 +2914,7 @@ function renderReleaseCardDiff(metaNew, metaOld) {
 const TZ_OPTIONS = {
   BCN:  { label: 'BCN',     tz: 'Europe/Madrid' },
   COL:  { label: 'Colombia', tz: 'America/Bogota' },
-  CST:  { label: 'CST (MX)', tz: 'America/Mexico_City' },
+  MEX:  { label: 'México', tz: 'America/Mexico_City' },
   UTC:  { label: 'UTC',     tz: 'UTC' },
 };
 let activeTz = 'BCN'; // default
@@ -2931,7 +2931,7 @@ function formatDateTime(isoStr) {
     hour12: false,
   };
   try {
-    return d.toLocaleString('en-GB', opts) + ' (' + tzInfo.label + ')';
+    return d.toLocaleString('en-GB', opts);
   } catch { return isoStr; }
 }
 
