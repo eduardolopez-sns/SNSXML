@@ -1108,6 +1108,83 @@ header {
   font-style: italic;
 }
 
+/* ── Spotify Compatibility ── */
+.compat-pass {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  background: rgba(126, 231, 135, 0.06);
+  border: 1px solid rgba(126, 231, 135, 0.2);
+  border-radius: var(--radius-sm);
+  color: var(--green);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.compat-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  border-left: 3px solid;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.compat-issue.compat-error {
+  background: rgba(248, 81, 73, 0.06);
+  border-left-color: var(--red);
+}
+.compat-issue.compat-warning {
+  background: rgba(210, 153, 34, 0.06);
+  border-left-color: var(--yellow);
+}
+.compat-issue.compat-info {
+  background: rgba(56, 139, 253, 0.06);
+  border-left-color: var(--blue);
+}
+.compat-severity {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.compat-error .compat-severity { background: var(--red); color: #000; }
+.compat-warning .compat-severity { background: var(--yellow); color: #000; }
+.compat-info .compat-severity { background: var(--blue); color: #000; }
+.compat-title { font-weight: 600; color: var(--text); }
+.compat-detail { color: var(--dim); font-size: 0.8rem; margin-top: 2px; }
+.compat-detail code {
+  background: rgba(139, 148, 158, 0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.compat-source {
+  font-size: 0.7rem;
+  color: var(--dim);
+  opacity: 0.7;
+  margin-top: 3px;
+  font-style: italic;
+}
+.compat-dsp-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1DB954;
+  letter-spacing: 0.03em;
+  margin-bottom: 12px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .container { padding: 16px 12px 60px; }
@@ -2264,6 +2341,198 @@ function formatRoleName(role) {
   return role.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
+// ─── Spotify Compatibility Check ─────────────────────────────────────────────
+// Sources: Spotify Onboarding Guideline v2.14, Spotify Music Metadata Style
+// Guide V2.2, Spotify Content Ops, DDEX KB best practices
+function checkSpotifyCompatibility(doc, tracks, meta) {
+  const issues = []; // { severity, title, detail, source }
+  const partyMap = buildPartyMap(doc);
+
+  // ── Check 1: "feat." in DisplayArtistName vs FeaturedArtist role ──
+  const releaseEls = doc.getElementsByTagName('Release');
+  for (const rel of releaseEls) {
+    // Skip TrackRelease
+    if (rel.tagName === 'TrackRelease') continue;
+    const dan = getTag(rel, 'DisplayArtistName');
+    if (!dan) continue;
+    const danText = dan.textContent.trim().toLowerCase();
+    const hasFeatText = /\bfeat\.?\b|\bfeaturing\b|\bft\.?\b/.test(danText);
+    const displayArtists = rel.getElementsByTagName('DisplayArtist');
+    let hasFeatRole = false;
+    for (const da of displayArtists) {
+      const roleEl = getTag(da, 'DisplayArtistRole');
+      if (roleEl && roleEl.textContent.trim() === 'FeaturedArtist') hasFeatRole = true;
+    }
+    if (hasFeatText && !hasFeatRole) {
+      issues.push({ severity: 'warning', title: '"featuring" in DisplayArtistName but no FeaturedArtist role',
+        detail: 'DisplayArtistName contains "featuring" but no DisplayArtist has FeaturedArtist role. Spotify may not link the featured artist correctly.',
+        source: 'Spotify Metadata Style Guide V2.2' });
+    }
+    if (hasFeatRole && !hasFeatText) {
+      issues.push({ severity: 'info', title: 'FeaturedArtist role found but "feat." not in DisplayArtistName',
+        detail: 'A DisplayArtist has FeaturedArtist role but the DisplayArtistName doesn\'t contain "featuring". Spotify will auto-append "feat." — verify this is intended.',
+        source: 'DDEX KB — DisplayArtists and DisplayArtistName' });
+    }
+  }
+
+  // ── Check 2: spotify:NEW party IDs ──
+  const propIds = doc.getElementsByTagName('ProprietaryId');
+  const newArtists = [];
+  for (const pid of propIds) {
+    const ns = pid.getAttribute('Namespace') || '';
+    if (ns.toLowerCase() === 'spotify' && pid.textContent.trim() === 'NEW') {
+      // Find parent Party → get name
+      let parent = pid.parentElement;
+      while (parent && parent.tagName !== 'Party') parent = parent.parentElement;
+      if (parent) {
+        const name = extractPartyName(parent);
+        if (name && !newArtists.includes(name)) newArtists.push(name);
+      }
+    }
+  }
+  if (newArtists.length > 0) {
+    issues.push({ severity: 'warning', title: `${newArtists.length} artist(s) with spotify:NEW`,
+      detail: `Spotify will create new profiles for: <code>${newArtists.map(n => esc(n)).join('</code>, <code>')}</code>. Verify no existing Spotify profiles exist to avoid duplicates.`,
+      source: 'Spotify Onboarding Guideline v2.14' });
+  }
+
+  // ── Check 3: Contributor roles Spotify won't display ──
+  const SPOTIFY_ROLES = ['mainartist', 'featuredartist', 'remixer', 'conductor', 'orchestra', 'composer', 'lyricist', 'producer'];
+  const invisibleRoles = {};
+  for (const t of tracks) {
+    for (const c of [...t.contributors, ...t.artists]) {
+      if (!c.role) continue;
+      const norm = c.role.toLowerCase().replace(/[_\- ]/g, '');
+      if (!SPOTIFY_ROLES.includes(norm)) {
+        const display = formatRoleName(c.role);
+        if (!invisibleRoles[display]) invisibleRoles[display] = 0;
+        invisibleRoles[display]++;
+      }
+    }
+  }
+  const invisKeys = Object.keys(invisibleRoles);
+  if (invisKeys.length > 0) {
+    const total = Object.values(invisibleRoles).reduce((a, b) => a + b, 0);
+    issues.push({ severity: 'info', title: `${total} contributor credit(s) with roles Spotify won't display`,
+      detail: `Roles not shown in Spotify Credits: <code>${invisKeys.join('</code>, <code>')}</code>. Spotify only displays: MainArtist, FeaturedArtist, Remixer, Conductor, Orchestra, Composer, Lyricist, Producer.`,
+      source: 'Spotify Content Ops — Credits section roles' });
+  }
+
+  // ── Check 4: Deal structure — required Spotify deal types ──
+  const dealEls = doc.getElementsByTagName('Deal');
+  let hasSubscription = false;
+  let hasAdSupported = false;
+  for (const deal of dealEls) {
+    const modelEl = getTag(deal, 'CommercialModelType');
+    if (!modelEl) continue;
+    const model = modelEl.textContent.trim();
+    if (model === 'SubscriptionModel') hasSubscription = true;
+    if (model === 'AdvertisementSupportedModel') hasAdSupported = true;
+  }
+  if (!hasSubscription) {
+    issues.push({ severity: 'error', title: 'Missing required deal: SubscriptionModel',
+      detail: 'Spotify requires a Deal with <code>SubscriptionModel</code> + <code>ConditionalDownload</code>/<code>Stream</code>. Without it, the release may not be available to premium subscribers.',
+      source: 'Spotify Onboarding Guideline v2.14' });
+  }
+  if (!hasAdSupported) {
+    issues.push({ severity: 'error', title: 'Missing required deal: AdvertisementSupportedModel',
+      detail: 'Spotify requires a Deal with <code>AdvertisementSupportedModel</code> + <code>Stream</code>. Without it, the release won\'t be available to free-tier users.',
+      source: 'Spotify Onboarding Guideline v2.14' });
+  }
+
+  // ── Check 5: DisplayArtistName vs DisplayArtist consistency ──
+  for (const rel of releaseEls) {
+    if (rel.tagName === 'TrackRelease') continue;
+    const dan = getTag(rel, 'DisplayArtistName');
+    if (!dan) continue;
+    const danText = dan.textContent.trim();
+    const displayArtists = rel.getElementsByTagName('DisplayArtist');
+    for (const da of displayArtists) {
+      const ref = getTag(da, 'ArtistPartyReference');
+      if (!ref) continue;
+      const name = partyMap[ref.textContent.trim()];
+      if (name && !danText.includes(name)) {
+        issues.push({ severity: 'warning', title: `DisplayArtist not in DisplayArtistName`,
+          detail: `Artist <code>${esc(name)}</code> is listed as a DisplayArtist but their name doesn't appear in DisplayArtistName: "<code>${esc(danText)}</code>".`,
+          source: 'DDEX KB — DisplayArtists and DisplayArtistName' });
+      }
+    }
+  }
+
+  // ── Check 6: OriginalReleaseDate > ReleaseDate ──
+  if (meta.originalReleaseDate && meta.releaseDate) {
+    const orig = new Date(meta.originalReleaseDate);
+    const rel = new Date(meta.releaseDate);
+    if (!isNaN(orig) && !isNaN(rel) && orig > rel) {
+      issues.push({ severity: 'warning', title: 'OriginalReleaseDate is after ReleaseDate',
+        detail: `OriginalReleaseDate (<code>${esc(meta.originalReleaseDate)}</code>) is later than ReleaseDate (<code>${esc(meta.releaseDate)}</code>). This is logically inconsistent and may cause display issues.`,
+        source: 'DDEX KB — Original Release Date, Release Date and Other Dates' });
+    }
+  }
+
+  // ── Check 7: Deal StartDateTime vs ReleaseDate alignment ──
+  if (meta.releaseDate) {
+    const relDate = new Date(meta.releaseDate);
+    for (const deal of dealEls) {
+      const startEl = getTag(deal, 'StartDateTime') || getTag(deal, 'StartDate');
+      if (!startEl) continue;
+      const startDate = new Date(startEl.textContent.trim());
+      if (isNaN(startDate) || isNaN(relDate)) continue;
+      const diffDays = Math.abs((startDate - relDate) / (1000 * 60 * 60 * 24));
+      if (diffDays > 7) {
+        issues.push({ severity: 'info', title: 'Deal start date differs from ReleaseDate by ' + Math.round(diffDays) + ' days',
+          detail: `Deal starts <code>${esc(startEl.textContent.trim())}</code> but ReleaseDate is <code>${esc(meta.releaseDate)}</code>. Verify alignment — content must be delivered 5 business days before street date.`,
+          source: 'Spotify Onboarding Guideline v2.14' });
+        break; // Only flag once
+      }
+    }
+  }
+
+  // ── Check 8: Missing ISRC or UPC ──
+  if (!meta.upc) {
+    issues.push({ severity: 'error', title: 'Missing UPC (ICPN)',
+      detail: 'No <code>ICPN</code> found on the release. A valid UPC/EAN is required for Spotify delivery.',
+      source: 'Spotify Onboarding Guideline v2.14' });
+  }
+  for (const t of tracks) {
+    if (!t.isrc) {
+      issues.push({ severity: 'error', title: `Track "${esc(t.title)}" missing ISRC`,
+        detail: 'Every SoundRecording must have a valid ISRC for Spotify to ingest it.',
+        source: 'DDEX KB — Identifiers' });
+    }
+  }
+
+  // ── Check 9: ISRC format validation ──
+  const isrcPattern = /^[A-Z]{2}[A-Z0-9]{3}\d{2}\d{5}$/;
+  for (const t of tracks) {
+    if (t.isrc && !isrcPattern.test(t.isrc)) {
+      issues.push({ severity: 'error', title: `Invalid ISRC format: ${esc(t.isrc)}`,
+        detail: `ISRC must be 12 alphanumeric characters (no hyphens): 2 letters + 3 alphanumeric + 2 digits + 5 digits. Got: <code>${esc(t.isrc)}</code>.`,
+        source: 'DDEX KB — Malformed Identifiers' });
+    }
+  }
+
+  // ── Check 10: "feat." in track/release title ──
+  const featInTitle = /\bfeat\.?\b|\bfeaturing\b|\bft\.?\b/i;
+  if (meta.title && featInTitle.test(meta.title)) {
+    issues.push({ severity: 'warning', title: '"feat." found in release title',
+      detail: `Release title "<code>${esc(meta.title)}</code>" contains "feat." — Spotify guidelines say to use the FeaturedArtist role instead of embedding it in the title.`,
+      source: 'Spotify Metadata Style Guide V2.2' });
+  }
+  for (const t of tracks) {
+    if (t.title && featInTitle.test(t.title)) {
+      issues.push({ severity: 'warning', title: `"feat." found in track title: "${esc(t.title)}"`,
+        detail: `Track title contains "feat." — use the FeaturedArtist role in DisplayArtist instead per Spotify guidelines.`,
+        source: 'Spotify Metadata Style Guide V2.2' });
+    }
+  }
+
+  // Sort: errors first, then warnings, then info
+  const order = { error: 0, warning: 1, info: 2 };
+  issues.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  return issues;
+}
+
 function runInspector() {
   if (state.files.length === 0) return;
   const file = state.files[0];
@@ -2278,6 +2547,38 @@ function runInspector() {
 
   // ── Release Card (reuse existing) ──
   html += renderReleaseCard(meta);
+
+  // ── Spotify Compatibility Check ──
+  const spotifyIssues = checkSpotifyCompatibility(doc, tracks, meta);
+  html += '<div class="inspector-section">';
+  html += '<h4><span class="section-icon">🟢</span> Spotify Compatibility</h4>';
+  if (meta.dsp) {
+    html += `<div class="compat-dsp-label">● Target DSP: ${esc(meta.dsp)}</div>`;
+  }
+  if (spotifyIssues.length === 0) {
+    html += '<div class="compat-pass">✓ No compatibility issues detected — XML looks good for Spotify</div>';
+  } else {
+    const errCount = spotifyIssues.filter(i => i.severity === 'error').length;
+    const warnCount = spotifyIssues.filter(i => i.severity === 'warning').length;
+    const infoCount = spotifyIssues.filter(i => i.severity === 'info').length;
+    html += `<div style="font-size:0.8rem;color:var(--dim);margin-bottom:12px">Found ${spotifyIssues.length} issue(s): `;
+    if (errCount) html += `<span style="color:var(--red)">${errCount} error(s)</span> `;
+    if (warnCount) html += `<span style="color:var(--yellow)">${warnCount} warning(s)</span> `;
+    if (infoCount) html += `<span style="color:var(--blue)">${infoCount} info</span>`;
+    html += '</div>';
+    for (const issue of spotifyIssues) {
+      const sevLabel = issue.severity === 'error' ? 'ERROR' : issue.severity === 'warning' ? 'WARNING' : 'INFO';
+      html += `<div class="compat-issue compat-${issue.severity}">
+        <span class="compat-severity">${sevLabel}</span>
+        <div>
+          <div class="compat-title">${issue.title}</div>
+          <div class="compat-detail">${issue.detail}</div>
+          <div class="compat-source">Source: ${esc(issue.source)}</div>
+        </div>
+      </div>`;
+    }
+  }
+  html += '</div>';
 
   // ── Contributors & Roles (THE KEY section) ──
   html += '<div class="inspector-section">';
