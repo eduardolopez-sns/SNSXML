@@ -1174,6 +1174,56 @@ header {
   margin-top: 3px;
   font-style: italic;
 }
+.compat-evidence-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.compat-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(139, 148, 158, 0.1);
+  border: 1px solid rgba(139, 148, 158, 0.2);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.compat-pill:hover { background: rgba(56, 139, 253, 0.12); border-color: var(--accent); color: var(--accent); }
+.compat-pill.active { background: rgba(56, 139, 253, 0.15); border-color: var(--accent); color: var(--accent); }
+.compat-evidence-panel {
+  display: none;
+  margin-top: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  animation: fadeIn 0.2s ease;
+}
+.compat-evidence-panel.open { display: block; }
+.compat-evidence-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(139, 148, 158, 0.06);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--dim);
+}
+.compat-evidence-code {
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.compat-evidence-code .xml-highlight {
+  background: rgba(210, 153, 34, 0.15);
+  border-radius: 2px;
+  padding: 1px 0;
+}
 .compat-dsp-label {
   display: inline-flex;
   align-items: center;
@@ -2364,8 +2414,13 @@ function checkSpotifyCompatibility(doc, tracks, meta) {
       if (roleEl && roleEl.textContent.trim() === 'FeaturedArtist') hasFeatRole = true;
     }
     if (hasFeatText && !hasFeatRole) {
+      const danEvidence = [{ label: 'DisplayArtistName', xml: serializeEvidence(dan), highlight: 'feat' }];
+      for (const da of displayArtists) {
+        danEvidence.push({ label: 'DisplayArtist #' + (da.getAttribute('SequenceNumber') || '?'), xml: serializeEvidence(da), highlight: 'DisplayArtistRole' });
+      }
       issues.push({ severity: 'warning', title: '"featuring" in DisplayArtistName but no FeaturedArtist role',
         detail: 'DisplayArtistName contains "featuring" but no DisplayArtist has FeaturedArtist role. Spotify may not link the featured artist correctly.',
+        evidence: danEvidence,
         source: 'Spotify Metadata Style Guide V2.2' });
     }
     if (hasFeatRole && !hasFeatText) {
@@ -2378,21 +2433,25 @@ function checkSpotifyCompatibility(doc, tracks, meta) {
   // ── Check 2: spotify:NEW party IDs ──
   const propIds = doc.getElementsByTagName('ProprietaryId');
   const newArtists = [];
+  const newArtistEvidence = [];
   for (const pid of propIds) {
     const ns = pid.getAttribute('Namespace') || '';
     if (ns.toLowerCase() === 'spotify' && pid.textContent.trim() === 'NEW') {
-      // Find parent Party → get name
       let parent = pid.parentElement;
       while (parent && parent.tagName !== 'Party') parent = parent.parentElement;
       if (parent) {
         const name = extractPartyName(parent);
-        if (name && !newArtists.includes(name)) newArtists.push(name);
+        if (name && !newArtists.includes(name)) {
+          newArtists.push(name);
+          newArtistEvidence.push({ label: name, xml: serializeEvidence(parent), highlight: 'NEW' });
+        }
       }
     }
   }
   if (newArtists.length > 0) {
     issues.push({ severity: 'warning', title: `${newArtists.length} artist(s) with spotify:NEW`,
-      detail: `Spotify will create new profiles for: <code>${newArtists.map(n => esc(n)).join('</code>, <code>')}</code>. Verify no existing Spotify profiles exist to avoid duplicates.`,
+      detail: `Spotify will create new profiles for the artists below. Verify no existing Spotify profiles exist to avoid duplicates.`,
+      evidence: newArtistEvidence,
       source: 'Spotify Onboarding Guideline v2.14' });
   }
 
@@ -2447,15 +2506,28 @@ function checkSpotifyCompatibility(doc, tracks, meta) {
     if (!dan) continue;
     const danText = dan.textContent.trim();
     const displayArtists = rel.getElementsByTagName('DisplayArtist');
+    const mismatchEvidence = [];
     for (const da of displayArtists) {
       const ref = getTag(da, 'ArtistPartyReference');
       if (!ref) continue;
-      const name = partyMap[ref.textContent.trim()];
+      const refVal = ref.textContent.trim();
+      const name = partyMap[refVal];
       if (name && !danText.includes(name)) {
-        issues.push({ severity: 'warning', title: `DisplayArtist not in DisplayArtistName`,
-          detail: `Artist <code>${esc(name)}</code> is listed as a DisplayArtist but their name doesn't appear in DisplayArtistName: "<code>${esc(danText)}</code>".`,
-          source: 'DDEX KB — DisplayArtists and DisplayArtistName' });
+        // Find the Party element for evidence
+        const parties = doc.getElementsByTagName('Party');
+        let partyEl = null;
+        for (const p of parties) {
+          const pRef = getTag(p, 'PartyReference');
+          if (pRef && pRef.textContent.trim() === refVal) { partyEl = p; break; }
+        }
+        mismatchEvidence.push({ label: name, xml: serializeEvidence(da) + (partyEl ? '\n\n' + serializeEvidence(partyEl) : ''), highlight: name });
       }
+    }
+    if (mismatchEvidence.length > 0) {
+      issues.push({ severity: 'warning', title: `DisplayArtist not in DisplayArtistName`,
+        detail: `Artist(s) listed as DisplayArtist but not found in DisplayArtistName: "<code>${esc(danText)}</code>".`,
+        evidence: mismatchEvidence,
+        source: 'DDEX KB — DisplayArtists and DisplayArtistName' });
     }
   }
 
@@ -2569,17 +2641,32 @@ function runInspector() {
     if (warnCount) html += `<span style="color:var(--yellow)">${warnCount} warning(s)</span> `;
     if (infoCount) html += `<span style="color:var(--blue)">${infoCount} info</span>`;
     html += '</div>';
-    for (const issue of spotifyIssues) {
+    spotifyIssues.forEach((issue, issueIdx) => {
       const sevLabel = issue.severity === 'error' ? 'ERROR' : issue.severity === 'warning' ? 'WARNING' : 'INFO';
       html += `<div class="compat-issue compat-${issue.severity}">
         <span class="compat-severity">${sevLabel}</span>
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="compat-title">${issue.title}</div>
-          <div class="compat-detail">${issue.detail}</div>
-          <div class="compat-source">Source: ${esc(issue.source)}</div>
+          <div class="compat-detail">${issue.detail}</div>`;
+      // Evidence pills + panels
+      if (issue.evidence && issue.evidence.length > 0) {
+        html += '<div class="compat-evidence-pills">';
+        issue.evidence.forEach((ev, evIdx) => {
+          html += `<span class="compat-pill" id="pill_${issueIdx}_${evIdx}" onclick="toggleEvidence(${issueIdx},${evIdx})">${esc(ev.label)}</span>`;
+        });
+        html += '</div>';
+        issue.evidence.forEach((ev, evIdx) => {
+          const highlighted = highlightXmlLine(ev.xml, ev.highlight);
+          html += `<div class="compat-evidence-panel" id="evidence_${issueIdx}_${evIdx}">
+            <div class="compat-evidence-header"><span>XML Evidence — ${esc(ev.label)}</span></div>
+            <div class="compat-evidence-code">${highlighted}</div>
+          </div>`;
+        });
+      }
+      html += `<div class="compat-source">Source: ${esc(issue.source)}</div>
         </div>
       </div>`;
-    }
+    });
   }
   html += '</div>';
 
@@ -3298,6 +3385,57 @@ function switchTimezone(tz) {
       btn.classList.toggle('active', btn.textContent.trim() === TZ_OPTIONS[tz].label);
     });
   });
+}
+
+// ─── Evidence Panel Helpers ───────────────────────────────────────────────────
+function serializeEvidence(el, highlightTag) {
+  if (!el) return '';
+  const s = new XMLSerializer();
+  let raw = s.serializeToString(el);
+  // Pretty-print: add newlines after closing tags and before opening tags
+  raw = raw.replace(/></g, '>\n<');
+  // Indent
+  const lines = raw.split('\n');
+  let indent = 0;
+  const formatted = lines.map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('</')) indent = Math.max(0, indent - 1);
+    const result = '  '.repeat(indent) + trimmed;
+    if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.includes('</')) indent++;
+    return result;
+  }).join('\n');
+  return formatted;
+}
+
+function highlightXmlLine(xmlStr, pattern) {
+  // Escape HTML first, then highlight matching lines
+  const escaped = esc(xmlStr);
+  if (!pattern) return escaped;
+  return escaped.split('\n').map(line => {
+    if (line.toLowerCase().includes(pattern.toLowerCase())) {
+      return `<span class="xml-highlight">${line}</span>`;
+    }
+    return line;
+  }).join('\n');
+}
+
+function toggleEvidence(issueId, pillIdx) {
+  const panel = document.getElementById(`evidence_${issueId}_${pillIdx}`);
+  const pill = document.getElementById(`pill_${issueId}_${pillIdx}`);
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  // Close all panels in this issue
+  const issueEl = panel.closest('.compat-issue');
+  if (issueEl) {
+    issueEl.querySelectorAll('.compat-evidence-panel').forEach(p => p.classList.remove('open'));
+    issueEl.querySelectorAll('.compat-pill').forEach(p => p.classList.remove('active'));
+  }
+  // Toggle this one (if wasn't already open)
+  if (!isOpen) {
+    panel.classList.add('open');
+    if (pill) pill.classList.add('active');
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
